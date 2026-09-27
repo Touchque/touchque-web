@@ -1,0 +1,64 @@
+{
+  "name": "@touchque/web",
+  "version": "1.0.0",
+  "description": "Browser SDK for TouchQue Authenticator \u2014 passkey ceremonies and behavioral telemetry",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Touchque/touchque-web"
+  },
+  "homepage": "https://touchque.com",
+  "license": "MIT",
+  "author": "TouchQue",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build && npm test"
+  },
+  "keywords": [
+    "touchque",
+    "passkey",
+    "webauthn",
+    "fido2",
+    "passwordless",
+    "browser",
+    "2fa",
+    "authentication"
+  ],
+  "dependencies": {
+    "@simplewebauthn/browser": "^13.3.0"
+  },
+  "devDependencies": {
+    "@touchque/node": "file:../touchque-node",
+    "jsdom": "^25.0.1",
+    "tsup": "^8.0.2",
+    "typescript": "^5.4.5",
+    "vitest": "^2.1.4"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>@touchque/web example</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 32rem; margin: 3rem auto; padding: 0 1rem; }
+    input, button { font: inherit; padding: .5rem .7rem; border-radius: .4rem; border: 1px solid #bbb; }
+    button { cursor: pointer; background: #111; color: #fff; border-color: #111; }
+    button:disabled { opacity: .5; cursor: default; }
+    .row { display: flex; gap: .5rem; margin: .75rem 0; }
+    .row input { flex: 1; }
+    pre { background: #f4f4f5; padding: .75rem; border-radius: .4rem; overflow: auto; }
+    .muted { color: #666; font-size: .85rem; }
+  </style>
+  <!-- The SDK imports @simplewebauthn/browser by name; map it to a CDN ESM build. -->
+  <script type="importmap">
+    { "imports": { "@simplewebauthn/browser": "https://esm.sh/@simplewebauthn/browser@13" } }
+  </script>
+</head>
+<body>
+  <h1>@touchque/web</h1>
+  <p class="muted">Talks to the local relay on this origin, which forwards to the TouchQue Authenticator API.</p>
+
+  <div class="row">
+    <input id="email" type="email" placeholder="you@example.com" value="demo@example.com" />
+    <button id="login">Sign in with a passkey</button>
+  </div>
+  <div class="row">
+    <button id="register">Register a passkey</button>
+    <button id="list">List</button>
+  </div>
+
+  <pre id="out">ready</pre>
+
+  <script type="module">
+    import { createTouchQueWeb, PasskeyNotRegisteredError, PasskeyDismissedError } from './dist/index.mjs';
+
+    const out = document.getElementById('out');
+    const log = (label, v) => { out.textContent = `${label}\n\n${typeof v === 'string' ? v : JSON.stringify(v, null, 2)}`; };
+
+    const tq = createTouchQueWeb({ baseUrl: location.origin });
+
+    if (!tq.isPasskeySupported()) {
+      document.getElementById('login').disabled = true;
+      log('unsupported', 'This browser does not expose the WebAuthn API.');
+    }
+
+    document.getElementById('login').onclick = async () => {
+      const email = document.getElementById('email').value;
+      try {
+        const r = await tq.passkeys.authenticate({ email });
+        if (r.ok) log('signed in', r.raw);
+        else if (r.requiresStepUp) log('step-up required', r.raw);
+        else if (r.pending2fa) log('pending 2FA', r.raw);
+        else log('not completed', r.raw);
+      } catch (e) {
+        if (e instanceof PasskeyNotRegisteredError) log('no passkey', 'Register one first, or use a password.');
+        else if (e instanceof PasskeyDismissedError) log('dismissed', 'The prompt was closed.');
+        else log('error', `${e.name}: ${e.message}`);
+      }
+    };
+
+    document.getElementById('register').onclick = async () => {
+      try { log('registered', await tq.passkeys.register({ label: 'Example device' })); }
+      catch (e) { log('error', `${e.name}: ${e.message}`); }
+    };
+
+    document.getElementById('list').onclick = async () => {
+      try { log('passkeys', await tq.passkeys.list()); }
+      catch (e) { log('error', `${e.name}: ${e.message}`); }
+    };
+  </script>
+</body>
+</html>
