@@ -29,11 +29,16 @@ export interface OfflineChallenge {
   expiresInSeconds: number;
   /** `true` when the "type the time-based code instead" fallback is enabled. */
   totpAvailable: boolean;
+  /**
+   * Number matching: print this under the QR. After scanning, the phone shows three numbers (this one
+   * and two decoys) and the user taps the one that matches the page. Absent when no number matching applies.
+   */
+  challengeCode?: string;
 }
 
 export interface OfflineVerifyResult {
   approved: boolean;
-  /** When not approved: `invalid_code`, `locked`, `expired`, `used`, `too_many_failures`, … */
+  /** When not approved: `invalid_code`, `locked`, `expired`, `used`, `request_rejected` (the phone rejected this sign-in), `too_many_failures`, … */
   reason?: string;
   attemptsLeft?: number;
 }
@@ -65,8 +70,15 @@ export class OfflineSign {
 
   /** Ask your backend for a challenge for this user. */
   /** `externalUsername` is optional: the server ignores it when its router binds the flow to your password step (`getLoginUser`). */
-  async challenge(input: { externalUsername?: string } = {}): Promise<OfflineChallenge> {
-    return this.http.post<OfflineChallenge>(this.paths.offlineChallenge, input.externalUsername ? { externalUsername: input.externalUsername } : {});
+  /**
+   * `requestId` is the push this QR is a fallback for: once the phone REJECTS it the QR is dead (no new QR is issued,
+   * a code for the old one is refused with `request_rejected`), and a push with number matching makes the QR show the same number.
+   */
+  async challenge(input: { externalUsername?: string; requestId?: string } = {}): Promise<OfflineChallenge> {
+    return this.http.post<OfflineChallenge>(this.paths.offlineChallenge, {
+      ...(input.externalUsername && { externalUsername: input.externalUsername }),
+      ...(input.requestId && { requestId: input.requestId }),
+    });
   }
 
   /** Check the code the user typed. Wrong / expired / locked codes resolve `{ approved:false, reason }`. */
@@ -75,8 +87,8 @@ export class OfflineSign {
   }
 
   /** Time-based fallback: check a code typed straight from the app (only when `totpAvailable`). */
-  async verifyTotp(input: { externalUsername?: string; code: string }): Promise<OfflineVerifyResult> {
-    const body = input.externalUsername ? { externalUsername: input.externalUsername, code: input.code } : { code: input.code };
+  async verifyTotp(input: { externalUsername?: string; code: string; requestId?: string }): Promise<OfflineVerifyResult> {
+    const body = { ...(input.externalUsername && { externalUsername: input.externalUsername }), code: input.code, ...(input.requestId && { requestId: input.requestId }) };
     return this.asResult(() => this.http.post<OfflineVerifyResult>(this.paths.offlineTotp, body));
   }
 

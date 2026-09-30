@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0] — 2026-09-30
+
+### Security
+- **A phone-side reject ends the sign-in at once, even while the offline QR is on screen.** `touchqueFetch` used to
+  stop checking the push when the offline QR appeared; it now keeps checking, so a reject on the phone surfaces
+  as a final `rejected` step (`reason: 'request_rejected'`) and an approval finishes the action without typing a
+  code. The QR is not redrawn on every check.
+- `offline.challenge({ requestId })` / `offline.verifyTotp({ requestId })` tie the QR / time-based code to the
+  push (see `@touchque/node` 3.1.0).
+
+### Added
+- `Step.offline.challengeCode` / `OfflineChallenge.challengeCode`: the number to print under the QR when number
+  matching applies (the phone offers it among two decoys).
+
 ## [1.0.0] — 2026-09-28
 
 ### Added

@@ -35,27 +35,52 @@ describe('touchqueFetch', () => {
     expect(s.seen[2].get('x-touchque-token')).toBe('t2');
   });
 
-  test('offline: waits for the code (no polling), then sends it with the token', async () => {
-    const s = server([
-      json({ touchque: { state: 'waiting', requestId: 'r1' }, token: 't1' }, 202),
-      json({ touchque: { state: 'offline', offline: { challengeId: 'c1', qrDataUrl: 'data:x' } }, token: 't2' }, 202),
-      json({ ok: true }, 200),
-    ]);
-    let calls = 0;
+  test('offline: keeps checking while the QR is up (without redrawing it), then sends the typed code with the token', async () => {
+    const seen: Headers[] = [];
+    let polls = 0;
+    const f = vi.fn(async (_i: RequestInfo | URL, init?: RequestInit) => {
+      const h = new Headers(init?.headers);
+      seen.push(h);
+      if (!h.get('x-touchque-token')) return json({ touchque: { state: 'waiting', requestId: 'r1' }, token: 't1' }, 202);
+      if (h.get('x-touchque-offline')) return json({ touchque: { state: 'offline', offline: { challengeId: 'c1', qrDataUrl: 'data:x', challengeCode: '47' } }, token: 't2' }, 202);
+      if (h.get('x-touchque-code')) return json({ ok: true }, 200);
+      polls += 1;
+      return json({ touchque: { state: 'offline', offline: { challengeId: 'c1' } }, token: 't2' }, 202);
+    });
+    const steps: Step[] = [];
     const res = await touchqueFetch('/api/transfer', { method: 'POST' }, {
-      fetch: s.fetch, pollIntervalMs: 1,
+      fetch: f as unknown as typeof fetch, pollIntervalMs: 1,
       onStep: (st, c) => {
-        calls += 1;
+        steps.push(st);
         if (st.state === 'waiting') c.useOffline();
-        if (st.state === 'offline') setTimeout(() => c.submitCode('ABCD123'), 20);
+        if (st.state === 'offline') setTimeout(() => c.submitCode('ABCD123'), 25);
       },
     });
     expect(res.status).toBe(200);
-    expect(calls).toBe(2);
-    expect(s.seen[1].get('x-touchque-offline')).toBe('1');
-    expect(s.seen[2].get('x-touchque-code')).toBe('ABCD123');
-    expect(s.seen[2].get('x-touchque-offline')).toBeNull();
-    expect(s.seen[2].get('x-touchque-token')).toBe('t2');
+    expect(polls).toBeGreaterThan(0); // it kept checking the push while the QR was shown
+    // The page hears about the QR exactly once (with the number to print under it), not on every check.
+    expect(steps.map((x) => x.state)).toEqual(['waiting', 'offline']);
+    expect(steps[1].offline).toMatchObject({ qrDataUrl: 'data:x', challengeCode: '47' });
+    const codeCall = seen.find((h) => h.get('x-touchque-code'))!;
+    expect(codeCall.get('x-touchque-code')).toBe('ABCD123');
+    expect(codeCall.get('x-touchque-offline')).toBeNull();
+    expect(codeCall.get('x-touchque-token')).toBe('t2');
+  });
+
+  test('a phone-side reject while the QR is up ends the attempt at once', async () => {
+    const f = vi.fn(async (_i: RequestInfo | URL, init?: RequestInit) => {
+      const h = new Headers(init?.headers);
+      if (!h.get('x-touchque-token')) return json({ touchque: { state: 'waiting', requestId: 'r1' }, token: 't1' }, 202);
+      if (h.get('x-touchque-offline')) return json({ touchque: { state: 'offline', offline: { challengeId: 'c1', qrDataUrl: 'data:x' } }, token: 't2' }, 202);
+      return json({ touchque: { state: 'rejected', requestId: 'r1', reason: 'request_rejected' }, token: 't3' }, 403);
+    });
+    const steps: Step[] = [];
+    const res = await touchqueFetch('/api/transfer', { method: 'POST' }, {
+      fetch: f as unknown as typeof fetch, pollIntervalMs: 1,
+      onStep: (st, c) => { steps.push(st); if (st.state === 'waiting') c.useOffline(); },
+    });
+    expect(res.status).toBe(403);
+    expect(steps.map((x) => x.state)).toEqual(['waiting', 'offline', 'rejected']);
   });
 
   test('passkey_required runs the passkey approval once, then continues', async () => {

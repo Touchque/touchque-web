@@ -29,7 +29,15 @@ export interface Step {
   expiresAt?: string;
   details?: Array<{ label: string; value: string }>;
   enroll?: { qrCodeDataUrl: string; recoveryCodes?: string[]; expiresAt?: string };
-  offline?: { challengeId: string; qrDataUrl?: string; expiresAt?: string; totpAvailable?: boolean; attemptsLeft?: number };
+  offline?: {
+    challengeId: string;
+    qrDataUrl?: string;
+    expiresAt?: string;
+    totpAvailable?: boolean;
+    attemptsLeft?: number;
+    /** Number matching: print this under the QR — the phone shows it among two decoys and the user taps the match. */
+    challengeCode?: string;
+  };
   reason?: string;
   retryAfter?: number;
   assurance?: { phishingResistant: boolean; method: string };
@@ -70,6 +78,7 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
   let code: { value: string; type: 'qr' | 'totp' } | undefined;
   let cancelled = false;
   let passkeyTried: string | undefined;
+  let lastOfflineId: string | undefined;
   let wake: (() => void) | undefined;
 
   const controls: StepControls = {
@@ -105,7 +114,12 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
       return res; // your route's response, or a final TouchQue refusal
     }
     token = typeof body.token === 'string' ? body.token : token;
-    options.onStep?.(step, controls);
+    // While the QR is on screen the loop keeps checking (so a phone-side reject ends the attempt at once).
+    // Those checks carry no QR again — don't make the page redraw the one it already shows.
+    const sameQrStillUp = step.state === 'offline' && !!step.offline && !step.offline.qrDataUrl && step.offline.attemptsLeft === undefined
+      && !step.reason && lastOfflineId === step.offline.challengeId;
+    if (step.state === 'offline' && step.offline?.qrDataUrl) lastOfflineId = step.offline.challengeId;
+    if (!sameQrStillUp) options.onStep?.(step, controls);
     if (TERMINAL.includes(step.state)) return res;
 
     if (step.state === 'passkey_required') {
@@ -116,7 +130,7 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
         continue;
       }
     }
-    // Offline: wait for the user to type the code. Otherwise re-check shortly.
-    await sleep(step.state === 'offline' && !code ? null : poll);
+    // Offline: keep checking the push while the user reads the QR / types the code; a submitted code wakes us.
+    await sleep(poll);
   }
 }

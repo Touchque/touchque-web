@@ -78,9 +78,15 @@ await classic.login({
 
 ## Offline sign
 
-`Step.state === 'offline'` carries `{ qrDataUrl, totpAvailable }` — render the
+`Step.state === 'offline'` carries `{ qrDataUrl, totpAvailable, challengeCode? }` — render the
 QR (the phone scans it without internet and shows a 7-character code) and
 call `controls.submitCode(code)` once the user types it.
+
+- When `challengeCode` is present (number matching), print it under the QR: the phone shows it among two
+  decoys and the user taps the one that matches.
+- While the QR is on screen `touchqueFetch` keeps checking the push. If the user **rejects it on the phone**
+  you get a final `rejected` step straight away (`reason: 'request_rejected'`) — the QR is dead, so reset your
+  form. Approving the push instead finishes the sign-in without typing a code.
 
 ## Behavioral biometrics (optional)
 

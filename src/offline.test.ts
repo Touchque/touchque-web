@@ -22,6 +22,18 @@ describe('OfflineSign', () => {
     expect(http.post).toHaveBeenNthCalledWith(3, '/offline/totp', { externalUsername: 'a@b.com', code: 'ABCDEFG' });
   });
 
+  test('challenge/verifyTotp carry the push request id, and the number for the page comes back', async () => {
+    const http = fakeHttp();
+    const o = new OfflineSign(http, paths);
+    (http.post as any).mockResolvedValueOnce({ ...challenge, challengeCode: '47' });
+    const ch = await o.challenge({ requestId: 'req-1' });
+    expect(http.post).toHaveBeenLastCalledWith('/offline/challenge', { requestId: 'req-1' });
+    expect(ch.challengeCode).toBe('47');
+    (http.post as any).mockResolvedValueOnce({ approved: true });
+    await o.verifyTotp({ code: 'ABCDEFG', requestId: 'req-1' });
+    expect(http.post).toHaveBeenLastCalledWith('/offline/totp', { code: 'ABCDEFG', requestId: 'req-1' });
+  });
+
   test('a wrong code resolves { approved:false, reason, attemptsLeft } instead of throwing; real errors still throw', async () => {
     const http = fakeHttp();
     const o = new OfflineSign(http, paths);
