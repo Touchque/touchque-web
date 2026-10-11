@@ -143,6 +143,13 @@ describe('attachBehavioral', () => {
     ).toThrow(/telemetryToken and requestId/);
   });
 
+  test('a relative or missing apiBaseUrl is refused instead of posting to the partner site', () => {
+    const container = document.createElement('div');
+    for (const apiBaseUrl of ['', '/api', 'api.touchque.com']) {
+      expect(() => attachBehavioral(container, { telemetryToken: 't', requestId: 'r', apiBaseUrl })).toThrow(/apiBaseUrl/);
+    }
+  });
+
   test('submit() POSTs metrics to /login/:id/telemetry with a Bearer token', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => '' }) as any);
     const h = attachBehavioral(container, {

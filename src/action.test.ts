@@ -35,6 +35,35 @@ describe('touchqueFetch', () => {
     expect(s.seen[2].get('x-touchque-token')).toBe('t2');
   });
 
+  // R1-04: the token reached no browser before, so the bot signals never ran.
+  test('posts behavioural telemetry once when the step carries a token and telemetry is configured', async () => {
+    const urls: string[] = [];
+    const responses = [
+      json({ touchque: { state: 'waiting', requestId: 'r1', telemetryToken: 'tt' }, token: 't1' }, 202),
+      json({ touchque: { state: 'waiting', requestId: 'r1' }, token: 't2' }, 202),
+      json({ ok: true }, 200),
+    ];
+    const f = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      urls.push(`${init?.method || 'GET'} ${String(input)} ${new Headers(init?.headers).get('authorization') || ''}`.trim());
+      if (String(input).includes('/telemetry')) return json({ ok: true }, 200);
+      return responses.shift()!;
+    });
+    await touchqueFetch('/api/transfer', { method: 'POST' }, {
+      fetch: f as unknown as typeof fetch, pollIntervalMs: 1, telemetry: { apiBaseUrl: 'https://api.touchque.com' },
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(urls.filter((u) => u.includes('/telemetry'))).toEqual(['POST https://api.touchque.com/login/r1/telemetry Bearer tt']);
+  });
+
+  test('without the telemetry option nothing is posted to TouchQue', async () => {
+    const s = server([
+      json({ touchque: { state: 'waiting', requestId: 'r1', telemetryToken: 'tt' }, token: 't1' }, 202),
+      json({ ok: true }, 200),
+    ]);
+    await touchqueFetch('/api/transfer', { method: 'POST' }, { fetch: s.fetch, pollIntervalMs: 1 });
+    expect((s.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) => String(c[0]))).toEqual(['/api/transfer', '/api/transfer']);
+  });
+
   test('offline: keeps checking while the QR is up (without redrawing it), then sends the typed code with the token', async () => {
     const seen: Headers[] = [];
     let polls = 0;

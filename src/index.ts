@@ -36,6 +36,7 @@ export type { AttachBehavioralOptions, BehavioralHandle, BehavioralMetrics } fro
 export type { ClassicTwoFactorPaths, EnrollStartResult, LinkStatus, ClassicLoginResult, ClassicLoginOptions } from './classic2fa';
 export { touchqueFetch };
 export type { Step, StepState, StepControls, TouchQueFetchOptions } from './action';
+export type { RegisterApprovalOptions } from './passkeys';
 
 // Matches touchqueRouter's default mount paths in @touchque/node exactly —
 // pairing the two needs zero `paths` config.

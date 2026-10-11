@@ -63,6 +63,11 @@ export function attachBehavioral(
   }
 
   const apiBaseUrl = (options.apiBaseUrl || '').replace(/\/+$/, '');
+  // A relative or missing base would post to the partner's own site and be
+  // lost silently (R1-04).
+  if (!/^https?:\/\/[^/]/i.test(apiBaseUrl)) {
+    throw new Error('attachBehavioral: apiBaseUrl must be the absolute TouchQue API URL, e.g. https://api.touchque.com');
+  }
   const fetchImpl = (options.fetch ?? (typeof fetch !== 'undefined' ? fetch : undefined));
   if (!fetchImpl) {
     throw new Error('attachBehavioral: no `fetch` available — pass `fetch` in the options.');

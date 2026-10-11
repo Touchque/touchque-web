@@ -6,7 +6,8 @@ import {
 } from '@simplewebauthn/browser';
 import type { RelayHttp } from './http';
 import type { TouchQuePaths, RegisterResult, AuthenticateResult, ApproveResult, PasskeySummary } from './types';
-import { PasskeyDismissedError, TouchQueWebError } from './errors';
+import { PasskeyDismissedError, TouchQueWebError, TouchQueWebAPIError } from './errors';
+import type { Step, StepControls } from './action';
 
 function isDismissal(err: unknown): boolean {
   const name = (err as { name?: string })?.name;
@@ -35,6 +36,13 @@ function unwrapOptions(body: unknown): { attemptId?: string; options: Record<str
   return { options: (body ?? {}) as Record<string, unknown> };
 }
 
+export interface RegisterApprovalOptions {
+  /** Render the phone-approval step (`waiting` + `number`) when the user has a linked phone. */
+  onStep?: (step: Step, controls: StepControls) => void;
+  signal?: AbortSignal;
+  pollIntervalMs?: number;
+}
+
 export class Passkeys {
   constructor(
     private readonly http: RelayHttp,
@@ -47,8 +55,15 @@ export class Passkeys {
    * `extra` is merged into the verify request body — use it for a device
    * label, for example: `register({ label: 'MacBook Touch ID' })`.
    */
-  async register(extra: Record<string, unknown> = {}): Promise<RegisterResult> {
-    const optionsBody = await this.http.post<unknown>(this.paths.registerOptions, {});
+  async register(extra: Record<string, unknown> = {}, approval: RegisterApprovalOptions = {}): Promise<RegisterResult> {
+    // A user with a linked phone approves adding a passkey there first: the
+    // relay answers 202 with the step (show `step.number`) until approved.
+    const res = await this.http.stepUp(this.paths.registerOptions, {}, approval);
+    const optionsBody = await res.json().catch(() => null);
+    if (!res.ok) {
+      const step = (optionsBody as { touchque?: Step } | null)?.touchque;
+      throw new TouchQueWebAPIError(res.status, optionsBody, step?.reason || step?.state || 'register_options_failed');
+    }
     const { options } = unwrapOptions(optionsBody);
     const response = await ceremony(() => startRegistration({ optionsJSON: options as never }));
     return this.http.post<RegisterResult>(this.paths.registerVerify, { response, ...extra });

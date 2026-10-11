@@ -8,7 +8,7 @@
 
 import type { RelayHttp } from './http';
 import { EnrollmentTimeoutError, EnrollmentCancelledError, PasskeyRequiredError, TouchQueWebAPIError } from './errors';
-import type { Step, StepControls } from './action';
+import type { Step, StepControls, TouchQueFetchOptions } from './action';
 
 export interface ClassicTwoFactorPaths {
   /** POST — starts (or rotates) enrollment. Returns `{ secret, qrCodeDataUrl, ... }`. */
@@ -51,6 +51,8 @@ export interface ClassicLoginOptions {
   onStep?: (step: Step, controls: StepControls) => void;
   signal?: AbortSignal;
   pollIntervalMs?: number;
+  /** Send behavioural signals when the workspace collects them (see TouchQueFetchOptions.telemetry). */
+  telemetry?: TouchQueFetchOptions['telemetry'];
 }
 
 function sleep(ms: number): Promise<void> {
@@ -107,7 +109,7 @@ export class ClassicTwoFactor {
     const res = await this.http.stepUp(
       this.paths.login,
       input.externalUsername ? { externalUsername: input.externalUsername } : {},
-      { onStep: input.onStep, signal: input.signal, pollIntervalMs: input.pollIntervalMs, approveWithPasskey: this.approveWithPasskey },
+      { onStep: input.onStep, signal: input.signal, pollIntervalMs: input.pollIntervalMs, approveWithPasskey: this.approveWithPasskey, telemetry: input.telemetry },
     );
     const body = await res.json().catch(() => null);
     if (res.ok) return body as ClassicLoginResult;

@@ -51,6 +51,23 @@ describe('collectDeviceSignals', () => {
     expect(s.version).toBe('tq2');
   });
 
+  // R1-16: crypto.subtle only exists in secure contexts; on http pages the
+  // fallback used to give every browser the same all-zero fingerprint.
+  test('without WebCrypto (http page) fingerprints still differ and are marked weak', async () => {
+    const real = globalThis.crypto;
+    vi.stubGlobal('crypto', { getRandomValues: real.getRandomValues.bind(real) });
+    try {
+      const a = await collectDeviceSignals();
+      vi.spyOn(window.screen, 'width', 'get').mockReturnValue(1234);
+      const b = await collectDeviceSignals();
+      expect(a.fingerprint).toMatch(/^tq2_fpw_[0-9a-f]{32}$/);
+      expect(a.fingerprint).not.toBe(b.fingerprint);
+      expect(a.fingerprint).not.toMatch(/0{16}/);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('a different screen changes the fingerprint (traits actually feed it)', async () => {
     const before = await collectDeviceSignals();
     vi.spyOn(window.screen, 'width', 'get').mockReturnValue(9999);

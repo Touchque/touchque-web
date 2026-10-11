@@ -163,15 +163,9 @@ function installedFontCount(): number | null {
   }
 }
 
-async function sha256Hex(input: string): Promise<string> {
-  try {
-    if (typeof crypto !== 'undefined' && crypto.subtle) {
-      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
-      return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
-    }
-  } catch { /* fall through */ }
-  // Non-secure context (http): a 53-bit cyrb53 hash, formatted like a hex digest
-  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+/** cyrb53 with a seed: 53 bits as 14 hex digits. */
+function cyrb53Hex(input: string, seed: number): string {
+  let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
   for (let i = 0; i < input.length; i++) {
     const ch = input.charCodeAt(i);
     h1 = Math.imul(h1 ^ ch, 2654435761);
@@ -179,7 +173,24 @@ async function sha256Hex(input: string): Promise<string> {
   }
   h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
   h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(64, '0');
+  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, '0');
+}
+
+/**
+ * SHA-256 as hex; `weak` when WebCrypto is missing (http pages, where
+ * crypto.subtle does not exist). The fallback joins five seeded cyrb53 runs:
+ * not cryptographic, but every digit depends on the input. It used to pad
+ * one 53-bit value with zeros, so every browser on an http page sent the
+ * same all-zero fingerprint (R1-16).
+ */
+async function digestHex(input: string): Promise<{ hex: string; weak: boolean }> {
+  try {
+    if (typeof crypto !== 'undefined' && crypto.subtle) {
+      const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+      return { hex: Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join(''), weak: false };
+    }
+  } catch { /* fall through */ }
+  return { hex: [1, 2, 3, 4, 5].map((seed) => cyrb53Hex(input, seed)).join('').slice(0, 64), weak: true };
 }
 
 /**
@@ -205,15 +216,16 @@ export async function collectDeviceSignals(): Promise<DeviceSignals> {
       doNotTrack: navigator.doNotTrack ?? null,
     };
     const canvas = canvasSignature();
-    traits.canvas = canvas ? (await sha256Hex(canvas)).slice(0, 16) : null;
+    traits.canvas = canvas ? (await digestHex(canvas)).hex.slice(0, 16) : null;
 
     // The User-Agent is deliberately NOT part of the fingerprint: a browser
     // update would otherwise look like a new device.
-    const fingerprint = await sha256Hex(JSON.stringify([
+    const { hex, weak } = await digestHex(JSON.stringify([
       traits.platform, traits.timezone, traits.screen, traits.cores, traits.memoryGb, traits.touchPoints,
       traits.webglRenderer, traits.canvas, traits.audio, traits.fonts,
     ]));
-    return { deviceId: readOrCreateDeviceId(), fingerprint: `tq2_fp_${fingerprint.slice(0, 32)}`, traits, version: ID_VERSION };
+    // `tq2_fpw_`: made without WebCrypto, so the server can tell the two apart.
+    return { deviceId: readOrCreateDeviceId(), fingerprint: `${weak ? 'tq2_fpw_' : 'tq2_fp_'}${hex.slice(0, 32)}`, traits, version: ID_VERSION };
   } catch {
     return {
       deviceId: readOrCreateDeviceId(),

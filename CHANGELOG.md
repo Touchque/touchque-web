@@ -3,6 +3,26 @@
 All notable changes to this project will be documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.2.0] — 2026-10-12
+
+### Fixed
+- **Device fingerprints on http pages were all the same.** Without WebCrypto (any page not served over
+  https) the fallback hash padded one 53-bit value with zeros, so every browser sent
+  `tq2_fp_000…0` and looked like one shared device. The fallback now spreads over every digit and is
+  marked `tq2_fpw_`; the API ignores the old all-zero value.
+
+### Added
+- **`touchqueFetch(..., { telemetry: { apiBaseUrl } })`** sends the behavioural signals for the approval
+  when the server's step carries a `telemetryToken` (server SDKs 3.3.0). `classic2fa.login` takes the
+  same option. Off unless set.
+- **`passkeys.register(extra, { onStep })`**: when the user has a linked phone, the relay first asks for an
+  approval there; `onStep` gets the `waiting` step with the number to show. A refused approval throws
+  `TouchQueWebAPIError` and never opens the passkey prompt.
+
+### Changed
+- `attachBehavioral` throws when `apiBaseUrl` is not an absolute http(s) URL, instead of posting to your
+  own site and losing the signals silently.
+
 ## [1.1.0] — 2026-09-30
 
 ### Security

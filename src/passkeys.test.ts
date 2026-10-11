@@ -30,11 +30,7 @@ function fetchStub(responses: Array<{ status?: number; body?: unknown }>) {
   const fn = vi.fn(async (url: string, init: RequestInit) => {
     calls.push({ url, init });
     const next = responses.shift() ?? { status: 200, body: {} };
-    return {
-      ok: (next.status ?? 200) >= 200 && (next.status ?? 200) < 300,
-      status: next.status ?? 200,
-      text: async () => (next.body === undefined ? '' : JSON.stringify(next.body)),
-    } as unknown as Response;
+    return new Response(next.body === undefined ? '' : JSON.stringify(next.body), { status: next.status ?? 200 });
   });
   return { fn: fn as unknown as typeof fetch, calls };
 }
@@ -83,6 +79,29 @@ describe('passkeys.register', () => {
     expect(calls[1].url).toBe('https://api.example.com/passkey/register/verify');
     expect(bodyOf(calls[1])).toEqual({ response: { id: 'attResp' }, label: 'MacBook' });
     expect(result.credentialId).toBe('cred_1');
+  });
+
+  // R2-12: with a linked phone the relay asks for an approval there first.
+  test('shows the phone approval step, then registers once approved', async () => {
+    const { fn, calls } = fetchStub([
+      { status: 202, body: { touchque: { state: 'waiting', requestId: 'r1', number: '47' }, token: 't1' } },
+      { body: { challenge: 'c', rp: {} } },
+      { body: { verified: true, credentialId: 'cred_2' } },
+    ]);
+    const tq = createTouchQueWeb({ baseUrl: 'https://api.example.com', fetch: fn });
+    startRegistration.mockResolvedValue({ id: 'attResp' });
+    const numbers: Array<string | undefined> = [];
+    const result = await tq.passkeys.register({}, { onStep: (step) => numbers.push(step.number), pollIntervalMs: 1 });
+    expect(numbers).toEqual(['47']);
+    expect(new Headers(calls[1].init.headers).get('x-touchque-token')).toBe('t1');
+    expect(result.credentialId).toBe('cred_2');
+  });
+
+  test('a rejected approval throws and never opens the passkey prompt', async () => {
+    const { fn } = fetchStub([{ status: 403, body: { touchque: { state: 'rejected' } } }]);
+    const tq = createTouchQueWeb({ baseUrl: 'https://api.example.com', fetch: fn });
+    await expect(tq.passkeys.register()).rejects.toBeInstanceOf(TouchQueWebAPIError);
+    expect(startRegistration).not.toHaveBeenCalled();
   });
 
   test('maps a dismissed prompt to PasskeyDismissedError', async () => {

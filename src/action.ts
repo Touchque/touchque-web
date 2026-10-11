@@ -41,6 +41,8 @@ export interface Step {
   reason?: string;
   retryAfter?: number;
   assurance?: { phishingResistant: boolean; method: string };
+  /** Only when the workspace collects behavioural signals (see `TouchQueFetchOptions.telemetry`). */
+  telemetryToken?: string;
 }
 
 export interface StepControls {
@@ -60,7 +62,21 @@ export interface TouchQueFetchOptions {
   /** Passkey approval for `passkey_required` (set automatically by createTouchQueWeb). */
   approveWithPasskey?: (requestId: string) => Promise<unknown>;
   fetch?: typeof fetch;
+  /**
+   * Send behavioural signals for this approval when the workspace collects
+   * them (the server's step then carries a `telemetryToken`). Off unless set.
+   */
+  telemetry?: {
+    /** TouchQue API base URL, e.g. `https://api.touchque.com`. */
+    apiBaseUrl: string;
+    /** Element whose pointer/keyboard activity is measured (default: document.body). */
+    container?: string | Element;
+    /** Also send device recognition signals; disclose it in your privacy notice. */
+    collectDeviceFingerprint?: boolean;
+  };
 }
+
+import { attachBehavioral, type BehavioralHandle } from './behavioral';
 
 const TERMINAL: StepState[] = ['approved', 'rejected', 'expired', 'blocked', 'frozen', 'rate_limited'];
 
@@ -80,6 +96,8 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
   let passkeyTried: string | undefined;
   let lastOfflineId: string | undefined;
   let wake: (() => void) | undefined;
+  let tracker: BehavioralHandle | undefined;
+  let telemetrySent = false;
 
   const controls: StepControls = {
     useOffline() { offline = true; wake?.(); },
@@ -93,44 +111,64 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
     wake = () => { if (t) clearTimeout(t); wake = undefined; resolve(); };
   });
 
-  for (;;) {
-    if (cancelled) throw abortError();
-    const headers = new Headers(init.headers);
-    if (token) headers.set('X-TouchQue-Token', token);
-    if (offline) headers.set('X-TouchQue-Offline', '1');
-    if (code) {
-      headers.set('X-TouchQue-Code', code.value);
-      if (code.type === 'totp') headers.set('X-TouchQue-Code-Type', 'totp');
-    }
-    offline = false;
-    code = undefined;
+  try {
+    for (;;) {
+      if (cancelled) throw abortError();
+      const headers = new Headers(init.headers);
+      if (token) headers.set('X-TouchQue-Token', token);
+      if (offline) headers.set('X-TouchQue-Offline', '1');
+      if (code) {
+        headers.set('X-TouchQue-Code', code.value);
+        if (code.type === 'totp') headers.set('X-TouchQue-Code-Type', 'totp');
+      }
+      offline = false;
+      code = undefined;
 
-    const res = await doFetch(input, { ...init, headers, signal: options.signal });
-    const body = await res.clone().json().catch(() => null);
-    const step: Step | undefined = body && typeof body === 'object' && body.touchque && typeof body.touchque.state === 'string' ? body.touchque : undefined;
+      const res = await doFetch(input, { ...init, headers, signal: options.signal });
+      const body = await res.clone().json().catch(() => null);
+      const step: Step | undefined = body && typeof body === 'object' && body.touchque && typeof body.touchque.state === 'string' ? body.touchque : undefined;
 
-    if (!step || res.status !== 202) {
-      if (step) options.onStep?.(step, controls);
-      return res; // your route's response, or a final TouchQue refusal
-    }
-    token = typeof body.token === 'string' ? body.token : token;
-    // While the QR is on screen the loop keeps checking (so a phone-side reject ends the attempt at once).
-    // Those checks carry no QR again — don't make the page redraw the one it already shows.
-    const sameQrStillUp = step.state === 'offline' && !!step.offline && !step.offline.qrDataUrl && step.offline.attemptsLeft === undefined
-      && !step.reason && lastOfflineId === step.offline.challengeId;
-    if (step.state === 'offline' && step.offline?.qrDataUrl) lastOfflineId = step.offline.challengeId;
-    if (!sameQrStillUp) options.onStep?.(step, controls);
-    if (TERMINAL.includes(step.state)) return res;
+      if (!step || res.status !== 202) {
+        if (step) options.onStep?.(step, controls);
+        return res; // your route's response, or a final TouchQue refusal
+      }
+      token = typeof body.token === 'string' ? body.token : token;
+      if (!tracker && options.telemetry && step.telemetryToken && step.requestId && typeof document !== 'undefined') {
+        try {
+          tracker = attachBehavioral(options.telemetry.container ?? document.body, {
+            telemetryToken: step.telemetryToken, requestId: step.requestId, apiBaseUrl: options.telemetry.apiBaseUrl,
+            collectDeviceFingerprint: options.telemetry.collectDeviceFingerprint, fetch: options.fetch,
+          });
+        } catch (err) {
+          console.warn('[TouchQue] behavioural telemetry not started:', err instanceof Error ? err.message : err);
+        }
+      }
+      // While the QR is on screen the loop keeps checking (so a phone-side reject ends the attempt at once).
+      // Those checks carry no QR again — don't make the page redraw the one it already shows.
+      const sameQrStillUp = step.state === 'offline' && !!step.offline && !step.offline.qrDataUrl && step.offline.attemptsLeft === undefined
+        && !step.reason && lastOfflineId === step.offline.challengeId;
+      if (step.state === 'offline' && step.offline?.qrDataUrl) lastOfflineId = step.offline.challengeId;
+      if (!sameQrStillUp) options.onStep?.(step, controls);
+      if (TERMINAL.includes(step.state)) return res;
 
-    if (step.state === 'passkey_required') {
-      if (!options.approveWithPasskey || !step.requestId) return res; // caller handles the passkey step itself
-      if (passkeyTried !== step.requestId) {
-        passkeyTried = step.requestId;
-        await options.approveWithPasskey(step.requestId); // browser ceremony; errors propagate (e.g. user dismissed)
-        continue;
+      if (step.state === 'passkey_required') {
+        if (!options.approveWithPasskey || !step.requestId) return res; // caller handles the passkey step itself
+        if (passkeyTried !== step.requestId) {
+          passkeyTried = step.requestId;
+          await options.approveWithPasskey(step.requestId); // browser ceremony; errors propagate (e.g. user dismissed)
+          continue;
+        }
+      }
+      // Offline: keep checking the push while the user reads the QR / types the code; a submitted code wakes us.
+      await sleep(poll);
+      // One submission, after the user has had a moment on the page: it must
+      // reach TouchQue before the approval does to count.
+      if (tracker && !telemetrySent) {
+        telemetrySent = true;
+        void tracker.submit();
       }
     }
-    // Offline: keep checking the push while the user reads the QR / types the code; a submitted code wakes us.
-    await sleep(poll);
+  } finally {
+    tracker?.stop();
   }
 }
