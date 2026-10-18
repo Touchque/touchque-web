@@ -7,8 +7,11 @@
 //   node testing/fake-touchque-api.mjs   → prints {"port":NNNN} on stdout
 //   API key: tq_test_key   API secret: test_secret
 //
-// Test control (unsigned): POST /__test/link {user}, /__test/approve {id?, via?},
-// /__test/reject {id?}, /__test/opts {...}, /__test/reset; GET /__test/calls
+// Test control (unsigned): POST /__test/link {user}, /__test/approve {id?, via?, provisional?},
+// /__test/reject {id?}, /__test/escalate {id?} (Vishing Shield: the phone tap
+// moved the request to a passkey), /__test/reconfirm {id?}, /__test/revoke
+// {id?, reason?}, /__test/opts {...} (canary: true adds `canary` to new
+// requests), /__test/reset; GET /__test/calls
 
 import http from 'node:http';
 import crypto from 'node:crypto';
@@ -20,7 +23,8 @@ let state;
 function reset() {
   state = {
     requests: [], linked: new Set(), pending: new Set(), calls: [], opts: {}, seq: 0,
-    actions: new Map([['LOGIN', { critical: false }], ['SEND_MONEY', { critical: true }]]),
+    actions: new Map([['LOGIN', { critical: false }], ['SEND_MONEY', { critical: true }], ['PASSKEY_ENROLL', { critical: true }]]),
+    usedEnrollApprovals: new Set(),
     challenges: new Map(), usedNonces: new Set(),
   };
 }
@@ -65,7 +69,14 @@ const pick = (id) => (id ? state.requests.find((r) => r.id === id) : state.reque
 route('POST', '/__test/reset', (req, res) => { reset(); send(res, 200, { ok: true }); });
 route('POST', '/__test/link', (req, res, b) => { state.linked.add(b.user); send(res, 200, { ok: true }); });
 route('POST', '/__test/opts', (req, res, b) => { state.opts = { ...state.opts, ...b }; send(res, 200, state.opts); });
-route('POST', '/__test/approve', (req, res, b) => { const r = pick(b.id); r.status = 'CONFIRMED'; r.confirmedVia = b.via || 'DEVICE'; send(res, 200, { id: r.id }); });
+route('POST', '/__test/approve', (req, res, b) => {
+  const r = pick(b.id); r.status = 'CONFIRMED'; r.confirmedVia = b.via || 'DEVICE'; r.provisional = Boolean(b.provisional);
+  send(res, 200, { id: r.id });
+});
+// Like the API's Vishing Shield: still PENDING, now passkey-only, the phone was refused.
+route('POST', '/__test/escalate', (req, res, b) => { const r = pick(b.id); r.requiresPasskey = true; r.challengeCode = undefined; send(res, 200, { id: r.id }); });
+route('POST', '/__test/reconfirm', (req, res, b) => { const r = pick(b.id); r.reconfirmedAt = new Date().toISOString(); send(res, 200, { id: r.id }); });
+route('POST', '/__test/revoke', (req, res, b) => { const r = pick(b.id); r.revokedAt = new Date().toISOString(); r.revokeReason = b.reason || 'COACHED'; send(res, 200, { id: r.id }); });
 route('POST', '/__test/reject', (req, res, b) => { const r = pick(b.id); r.status = 'REJECTED'; send(res, 200, { id: r.id }); });
 route('GET', '/__test/calls', (req, res) => send(res, 200, state.calls));
 
@@ -78,6 +89,10 @@ route('POST', '/login/request', (req, res, b) => {
   const action = state.actions.get(type);
   if (!action) return send(res, 400, { code: 'unknown_action', error: `Invalid action type: ${type}` });
   if (state.opts.blocked) return send(res, 403, { code: 'blocked', reason: state.opts.blocked, error: 'blocked' });
+  // Like the API: an approval given during a call and not re-confirmed yet pauses critical actions.
+  if (action.critical && state.requests.some((x) => x.user === user && x.status === 'CONFIRMED' && x.provisional && !x.reconfirmedAt && !x.revokedAt)) {
+    return send(res, 403, { code: 'blocked', reason: 'provisional', error: 'blocked' });
+  }
   const r = {
     id: `00000000-0000-4000-8000-${String(++state.seq).padStart(12, '0')}`, user, type, referenceId, details: toPairs(details),
     status: 'PENDING', consumed: false,
@@ -85,7 +100,14 @@ route('POST', '/login/request', (req, res, b) => {
     requiresPasskey: state.opts.passkeyOnly || undefined,
   };
   state.requests.push(r);
-  send(res, 200, { message: 'Request sent', requestId: r.id, challengeCode: r.challengeCode, expiresAt: new Date(Date.now() + 30000).toISOString(), requiresPasskey: r.requiresPasskey });
+  send(res, 200, {
+    message: 'Request sent', requestId: r.id, challengeCode: r.challengeCode, expiresAt: new Date(Date.now() + 30000).toISOString(), requiresPasskey: r.requiresPasskey,
+    ...(state.opts.telemetry && { telemetryToken: 'tt_test' }),
+    ...(state.opts.canary && { canary: { url: `http://127.0.0.1:${server.address().port}/c/canary-${r.id}.gif` } }),
+  });
+});
+const shieldFields = (r) => ({
+  provisional: Boolean(r.provisional), reconfirmedAt: r.reconfirmedAt || null, revoked: Boolean(r.revokedAt), revokeReason: r.revokeReason || null,
 });
 const assurance = (r) => ({ phishingResistant: r.confirmedVia === 'WEBAUTHN', method: r.confirmedVia === 'WEBAUTHN' ? 'passkey' : 'push' });
 route('GET', '/login/status/([^/]+)', (req, res, b, m) => {
@@ -94,6 +116,7 @@ route('GET', '/login/status/([^/]+)', (req, res, b, m) => {
   send(res, 200, {
     status: r.status, externalUsername: r.user, type: r.type, referenceId: r.referenceId, details: r.details, consumed: r.consumed,
     requiresPasskey: r.requiresPasskey, confirmedVia: r.confirmedVia || null, assurance: r.status === 'CONFIRMED' ? assurance(r) : null,
+    ...shieldFields(r),
   });
 });
 route('POST', '/login/([^/]+)/consume', (req, res, b, m) => {
@@ -101,11 +124,22 @@ route('POST', '/login/([^/]+)/consume', (req, res, b, m) => {
   if (!r) return send(res, 404, { code: 'not_found' });
   if (r.status !== 'CONFIRMED') return send(res, 409, { code: r.status === 'REJECTED' ? 'rejected' : r.status === 'EXPIRED' ? 'expired' : 'not_approved' });
   if (r.consumed) return send(res, 409, { code: 'already_used' });
+  if (r.revokedAt) return send(res, 409, { code: 'revoked' });
   r.consumed = true;
   send(res, 200, {
     consumed: true, requestId: r.id, externalUsername: r.user, type: r.type, referenceId: r.referenceId, details: r.details,
-    confirmedVia: r.confirmedVia, assurance: assurance(r), approvalProof: null,
+    confirmedVia: r.confirmedVia, assurance: assurance(r), approvalProof: null, ...shieldFields(r),
   });
+});
+route('POST', '/login/([^/]+)/report-fraud', (req, res, b, m) => {
+  const r = state.requests.find((x) => x.id === m[1]);
+  if (!r) return send(res, 404, { code: 'not_found' });
+  const reason = b.reason === undefined ? 'other' : b.reason;
+  if (!['chargeback', 'account_takeover', 'social_engineering', 'other'].includes(reason)) return send(res, 400, { code: 'invalid_reason' });
+  if (b.note !== undefined && (typeof b.note !== 'string' || b.note.length > 500)) return send(res, 400, { code: 'invalid_note' });
+  const alreadyReported = Boolean(r.fraudReported);
+  r.fraudReported = { reason, note: b.note || null };
+  send(res, 200, { reported: true, alreadyReported, requestId: r.id });
 });
 route('POST', '/login/recovery', (req, res, b) => send(res, 200, { success: true }));
 route('POST', '/auth/generate-secret', (req, res, b) => {
@@ -131,26 +165,52 @@ route('POST', '/action-types', (req, res, b) => {
   send(res, 200, { id: 'a1', type: b.type, name: b.name, description: b.description || '', critical: !!b.critical, active: true });
 });
 route('GET', '/action-types', (req, res) => send(res, 200, [...state.actions.entries()].map(([type, a]) => ({ type, ...a }))));
+// Like the real API: a QR that follows a push is tied to it. A request the phone REJECTED kills the QR
+// (none is issued, a code is refused), and a push with number matching makes the QR show the same number.
 route('POST', '/offline/challenge', (req, res, b) => {
   if (state.opts.offlineDisabled) return send(res, 403, { error: 'offline_sign_disabled', code: 'offline_sign_disabled' });
+  const linked = b.requestId ? state.requests.find((x) => x.id === b.requestId) : undefined;
+  if (b.requestId && !linked) return send(res, 404, { error: 'request_not_found' });
+  if (linked && linked.status === 'REJECTED') return send(res, 409, { error: 'request_rejected' });
+  if (linked && linked.requiresPasskey) return send(res, 403, { error: 'passkey_required', reason: 'passkey_required' });
   const id = `ch-${++state.seq}`;
-  state.challenges.set(id, { user: b.externalUsername, type: b.type, used: false });
-  send(res, 200, { challengeId: id, qr: 'TQ2.x', qrDataUrl: 'data:image/png;base64,OFFLINE', expiresAt: 'soon', expiresInSeconds: 120, totpAvailable: true });
+  state.challenges.set(id, { user: b.externalUsername, type: b.type, used: false, requestId: linked && linked.id });
+  const challengeCode = (linked && linked.challengeCode) || (b.requireNumberMatch === true ? '47' : undefined);
+  send(res, 200, { challengeId: id, qr: 'TQ2.x', qrDataUrl: 'data:image/png;base64,OFFLINE', expiresAt: 'soon', expiresInSeconds: 120, totpAvailable: true, ...(challengeCode ? { challengeCode } : {}) });
 });
 route('POST', '/offline/verify', (req, res, b) => {
   const ch = state.challenges.get(b.challengeId);
   if (!ch) return send(res, 404, { approved: false, reason: 'unknown_challenge' });
   if (ch.used) return send(res, 410, { approved: false, reason: 'used' });
+  if (ch.requestId && (state.requests.find((x) => x.id === ch.requestId) || {}).status === 'REJECTED') return send(res, 410, { approved: false, reason: 'request_rejected' });
+  if (ch.requestId && (state.requests.find((x) => x.id === ch.requestId) || {}).requiresPasskey) return send(res, 403, { approved: false, reason: 'passkey_required' });
   if (b.code !== 'ABCD123') return send(res, 401, { approved: false, reason: 'invalid_code', attemptsLeft: 4 });
   ch.used = true;
   send(res, 200, { approved: true, challengeId: b.challengeId, externalUsername: ch.user, type: ch.type });
 });
 route('POST', '/offline/totp/verify', (req, res, b) => {
+  if (b.requestId && (state.requests.find((x) => x.id === b.requestId) || {}).status === 'REJECTED') return send(res, 410, { approved: false, reason: 'request_rejected' });
+  if (b.requestId && (state.requests.find((x) => x.id === b.requestId) || {}).requiresPasskey) return send(res, 403, { approved: false, reason: 'passkey_required' });
   if (b.code !== '123456') return send(res, 401, { approved: false, reason: 'invalid_code' });
   send(res, 200, { approved: true, externalUsername: b.externalUsername });
 });
+// Like the API: a user with a linked phone needs an approved PASSKEY_ENROLL first, used once.
+route('POST', '/webauthn/register/options', (req, res, b) => {
+  const { externalUsername: user, approvalRequestId } = b;
+  if (state.linked.has(user)) {
+    if (!approvalRequestId) return send(res, 403, { code: 'enrollment_approval_required', error: 'enrollment_approval_required', action: 'PASSKEY_ENROLL' });
+    const r = state.requests.find((x) => x.id === approvalRequestId);
+    if (!r || r.user !== user || r.type !== 'PASSKEY_ENROLL' || r.status !== 'CONFIRMED') return send(res, 403, { code: 'enrollment_approval_invalid', error: 'enrollment_approval_invalid' });
+    if (state.usedEnrollApprovals.has(r.id)) return send(res, 403, { code: 'enrollment_approval_used', error: 'enrollment_approval_used' });
+    state.usedEnrollApprovals.add(r.id);
+  }
+  send(res, 200, { challenge: 'reg-challenge', rp: { id: 'example.com', name: 'Example' }, user: { name: user } });
+});
 route('GET', '/webauthn/credentials', (req, res) => send(res, 200, { credentials: [] }));
-route('DELETE', '/webauthn/credentials/([^/]+)', (req, res) => send(res, 200, { deleted: true }));
+// Like the API since 3.3.0: the user the passkey belongs to is required.
+route('DELETE', '/webauthn/credentials/([^/]+)', (req, res) => (new URL(req.url, 'http://x').searchParams.get('externalUsername')
+  ? send(res, 200, { deleted: true })
+  : send(res, 400, { code: 'invalid_request', error: 'externalUsername is required' })));
 
 const server = http.createServer((req, res) => {
   let raw = '';

@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.0] — 2026-10-18
+
+### Added
+- **Mirror Alarm.** When the server's step carries `canary` (server SDKs 3.4.0), `touchqueFetch` loads it
+  once on the current page (a hidden image plus one `sendBeacon` with `location.origin`), so a real-time
+  phishing proxy in front of your site gets the approval refused and the phone warns the user. Allow the
+  canary host in your CSP `img-src` and `connect-src`. `sendCanary(step.canary)` for pages that render
+  steps without `touchqueFetch`.
+- `Step.canary`.
+- Documented: a step that turns into `passkey_required` mid-flight (the user tapped Approve on the phone
+  during a call) runs the passkey approval as before.
+
 ## [1.2.0] — 2026-10-12
 
 ### Fixed

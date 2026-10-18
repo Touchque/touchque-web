@@ -19,7 +19,7 @@ import { Passkeys, isPasskeySupported, isPlatformAuthenticatorAvailable } from '
 import { ClassicTwoFactor } from './classic2fa';
 import { OfflineSign } from './offline';
 import { attachBehavioral, collectDeviceSignals } from './behavioral';
-import { touchqueFetch } from './action';
+import { touchqueFetch, sendCanary } from './action';
 import type { TouchQueFetchOptions } from './action';
 import type { AttachBehavioralOptions, BehavioralHandle } from './behavioral';
 import type { TouchQueWebConfig, TouchQuePaths } from './types';
@@ -34,7 +34,7 @@ export { normalizeOfflineCode, formatOfflineCodeInput } from './offline';
 export type { OfflineChallenge, OfflineVerifyResult, OfflineSignPaths } from './offline';
 export type { AttachBehavioralOptions, BehavioralHandle, BehavioralMetrics } from './behavioral';
 export type { ClassicTwoFactorPaths, EnrollStartResult, LinkStatus, ClassicLoginResult, ClassicLoginOptions } from './classic2fa';
-export { touchqueFetch };
+export { touchqueFetch, sendCanary };
 export type { Step, StepState, StepControls, TouchQueFetchOptions } from './action';
 export type { RegisterApprovalOptions } from './passkeys';
 

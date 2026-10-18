@@ -43,6 +43,54 @@ export interface Step {
   assurance?: { phishingResistant: boolean; method: string };
   /** Only when the workspace collects behavioural signals (see `TouchQueFetchOptions.telemetry`). */
   telemetryToken?: string;
+  /**
+   * Mirror Alarm (server SDKs 3.4.0): touchqueFetch loads it on this page by
+   * itself (see `sendCanary`), so a real-time phishing proxy in front of your
+   * site gets the approval refused. Only on the first waiting step.
+   */
+  canary?: { url: string };
+}
+
+/**
+ * Mirror Alarm: tells TouchQue which page shows this sign-in, so a phishing
+ * proxy in front of your site gets the approval refused. Loads the canary as a
+ * hidden image (the browser adds the page's origin as Referer) and sends a
+ * beacon with `location.origin`. touchqueFetch does it by itself for every
+ * step that carries `canary`; call it only when you render steps without it.
+ * Allow the canary host in your CSP `img-src` and `connect-src`. Never throws.
+ */
+export function sendCanary(canary: { url: string } | undefined): void {
+  const url = canary?.url;
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url) || typeof document === 'undefined') return;
+  try {
+    const img = document.createElement('img');
+    img.alt = '';
+    img.width = 1;
+    img.height = 1;
+    img.setAttribute('aria-hidden', 'true');
+    // Keeps the page's origin in Referer even under a no-referrer page policy.
+    img.referrerPolicy = 'origin';
+    img.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;left:-9999px;top:-9999px;';
+    const done = () => { img.remove(); };
+    img.addEventListener('load', done, { once: true });
+    img.addEventListener('error', done, { once: true });
+    img.src = url;
+    (document.body || document.documentElement).appendChild(img);
+  } catch {
+    // The beacon below still reports the page.
+  }
+  try {
+    if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+      let top = true;
+      try { top = window.top === window; } catch { top = false; }
+      // A string is sent as text/plain: no CORS preflight.
+      navigator.sendBeacon(url.replace(/\.gif(?=$|[?#])/i, ''), JSON.stringify({
+        origin: location.origin, top, referrer: document.referrer || '',
+      }));
+    }
+  } catch {
+    // Best effort: nothing on the page depends on it.
+  }
 }
 
 export interface StepControls {
@@ -98,6 +146,7 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
   let wake: (() => void) | undefined;
   let tracker: BehavioralHandle | undefined;
   let telemetrySent = false;
+  const canariesSent = new Set<string>();
 
   const controls: StepControls = {
     useOffline() { offline = true; wake?.(); },
@@ -127,6 +176,10 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
       const res = await doFetch(input, { ...init, headers, signal: options.signal });
       const body = await res.clone().json().catch(() => null);
       const step: Step | undefined = body && typeof body === 'object' && body.touchque && typeof body.touchque.state === 'string' ? body.touchque : undefined;
+      if (step?.canary?.url && !canariesSent.has(step.canary.url)) {
+        canariesSent.add(step.canary.url);
+        sendCanary(step.canary);
+      }
 
       if (!step || res.status !== 202) {
         if (step) options.onStep?.(step, controls);

@@ -99,6 +99,50 @@ attachBehavioral(formElement, { telemetryToken, requestId });
 Only active when your integration has behavioral biometrics enabled in the
 Dashboard; otherwise it's a no-op.
 
+## Mirror Alarm (phishing-proxy detection)
+
+With server SDKs 3.4.0 the first waiting step carries `canary: { url }`. `touchqueFetch` (and so
+`classic2fa.login` and the React hooks) loads it on the page that shows the sign-in, as a hidden 1x1 image,
+and sends one `navigator.sendBeacon` to it with `location.origin`. If that page is not on your site, i.e. a
+real-time phishing proxy relaying it, TouchQue refuses the approval and the phone warns the user. Allow the
+canary host (your TouchQue API host) in your Content-Security-Policy `img-src` and `connect-src`. If you
+render steps without `touchqueFetch`, call `sendCanary(step.canary)` once yourself.
+
+## Privacy
+
+What this package sends, and how long TouchQue keeps it. Mention it in your
+privacy notice (KVKK / GDPR).
+
+**Interaction signals** (`attachBehavioral`, only when the workspace enables
+behavioral biometrics): per-challenge aggregates of mouse distance and jitter,
+click count, keystroke count and average keystroke speed. No key values,
+characters or pointer coordinates leave the browser. The server keeps them for
+60 seconds and compares them with fixed bot rules; no per-user profile is
+built from them.
+
+**Device signals** (`collectDeviceFingerprint: true`, and only when the
+workspace enables device fingerprinting; the server drops them otherwise):
+
+- a random id in `localStorage` (`tq_device_id`), kept until the user clears
+  site data;
+- a SHA-256 digest of coarse browser traits (platform, language, time zone,
+  screen size, CPU cores, memory class, touch points, WebGL renderer, canvas
+  and audio digests, font count, cookie and Do Not Track settings).
+
+On the server, keyed hashes of these are kept as follows:
+
+| What | How long |
+|---|---|
+| Browsers a user approved a sign-in from (at most 5 per user) | 30 days |
+| The browser of a sign-in still waiting for approval | 15 minutes |
+| Accounts seen per browser and per address (velocity) | 1 hour |
+| Recognised browsers in your workspace | Deleted after 400 days unseen |
+| Risk assessment records (pseudonymised, train a shadow-mode model) | 365 days |
+
+**Mirror Alarm canary** (always, when the server's step carries one): the page's origin, whether it runs in
+a frame, the host of `document.referrer`, and the address the request came from, kept with the sign-in
+request it belongs to.
+
 ## Security
 
 - This package never sees your API secret — it only ever calls your backend.

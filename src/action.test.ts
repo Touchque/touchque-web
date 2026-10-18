@@ -1,5 +1,5 @@
 import { describe, test, expect, vi } from 'vitest';
-import { touchqueFetch, Step } from './action';
+import { touchqueFetch, sendCanary, Step } from './action';
 import { RelayHttp } from './http';
 import { ClassicTwoFactor } from './classic2fa';
 
@@ -156,5 +156,44 @@ describe('classic2fa.login — two-phase', () => {
     const result = await c.login({ onStep: (st) => st.number && numbers.push(st.number), pollIntervalMs: 1 });
     expect(numbers).toEqual(['12']);
     expect(result).toMatchObject({ status: 'success', requestId: 'r1' });
+  });
+});
+
+describe('Mirror Alarm canary', () => {
+  test('the first step with a canary loads it as a hidden image and beacons the page origin, once', async () => {
+    const beacons: Array<[string, string]> = [];
+    const sendBeacon = vi.fn((url: string, data: string) => { beacons.push([url, data]); return true; });
+    Object.defineProperty(navigator, 'sendBeacon', { value: sendBeacon, configurable: true });
+    const created: HTMLImageElement[] = [];
+    const orig = document.createElement.bind(document);
+    const spy = vi.spyOn(document, 'createElement').mockImplementation(((tag: string) => {
+      const el = orig(tag);
+      if (tag === 'img') created.push(el as HTMLImageElement);
+      return el;
+    }) as typeof document.createElement);
+    try {
+      const url = 'https://api.touchque.com/c/tok_abcdefghijklmnop.gif';
+      const s = server([
+        json({ touchque: { state: 'waiting', requestId: 'r1', canary: { url } }, token: 't1' }, 202),
+        json({ touchque: { state: 'waiting', requestId: 'r1', canary: { url } }, token: 't2' }, 202),
+        json({ ok: true }, 200),
+      ]);
+      await touchqueFetch('/api/transfer', { method: 'POST' }, { fetch: s.fetch, pollIntervalMs: 1 });
+      expect(created).toHaveLength(1);
+      expect(created[0].src).toBe(url);
+      expect(created[0].referrerPolicy).toBe('origin');
+      expect(beacons).toHaveLength(1);
+      expect(beacons[0][0]).toBe('https://api.touchque.com/c/tok_abcdefghijklmnop');
+      expect(JSON.parse(beacons[0][1])).toEqual({ origin: location.origin, top: true, referrer: '' });
+    } finally {
+      spy.mockRestore();
+      delete (navigator as any).sendBeacon;
+    }
+  });
+
+  test('sendCanary ignores anything that is not an http(s) URL and never throws', () => {
+    expect(() => sendCanary(undefined)).not.toThrow();
+    expect(() => sendCanary({ url: 'javascript:alert(1)' })).not.toThrow();
+    expect(document.querySelectorAll('img[src^="javascript"]').length).toBe(0);
   });
 });
