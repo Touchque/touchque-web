@@ -109,6 +109,12 @@ export interface TouchQueFetchOptions {
   signal?: AbortSignal;
   /** Passkey approval for `passkey_required` (set automatically by createTouchQueWeb). */
   approveWithPasskey?: (requestId: string) => Promise<unknown>;
+  /**
+   * Silent sign-ins: makes the browser key proof sent as `X-TouchQue-Browser`
+   * with each request (set by createTouchQueWeb with `browserKey: true`; or
+   * pass `browserKey.proof`). `null`, or an error, sends no header.
+   */
+  browserProof?: () => Promise<string | null>;
   fetch?: typeof fetch;
   /**
    * Send behavioural signals for this approval when the workspace collects
@@ -125,6 +131,7 @@ export interface TouchQueFetchOptions {
 }
 
 import { attachBehavioral, type BehavioralHandle } from './behavioral';
+import { BROWSER_PROOF_HEADER } from './browserKey';
 
 const TERMINAL: StepState[] = ['approved', 'rejected', 'expired', 'blocked', 'frozen', 'rate_limited'];
 
@@ -172,6 +179,13 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
       }
       offline = false;
       code = undefined;
+      // A fresh proof on every request, polls included: the server reads it
+      // only when it starts an approval (also after a first-time enrollment).
+      const makeProof = options.browserProof;
+      if (makeProof && !headers.has(BROWSER_PROOF_HEADER)) {
+        const proof = await Promise.resolve().then(makeProof).catch(() => null);
+        if (typeof proof === 'string' && proof) headers.set(BROWSER_PROOF_HEADER, proof);
+      }
 
       const res = await doFetch(input, { ...init, headers, signal: options.signal });
       const body = await res.clone().json().catch(() => null);

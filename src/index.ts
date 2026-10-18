@@ -21,6 +21,8 @@ import { OfflineSign } from './offline';
 import { attachBehavioral, collectDeviceSignals } from './behavioral';
 import { touchqueFetch, sendCanary } from './action';
 import type { TouchQueFetchOptions } from './action';
+import { browserKey as defaultBrowserKey } from './browserKey';
+import type { BrowserKey } from './browserKey';
 import type { AttachBehavioralOptions, BehavioralHandle } from './behavioral';
 import type { TouchQueWebConfig, TouchQuePaths } from './types';
 
@@ -37,6 +39,10 @@ export type { ClassicTwoFactorPaths, EnrollStartResult, LinkStatus, ClassicLogin
 export { touchqueFetch, sendCanary };
 export type { Step, StepState, StepControls, TouchQueFetchOptions } from './action';
 export type { RegisterApprovalOptions } from './passkeys';
+export {
+  browserKey, createBrowserKey, browserProofMessage, browserKeyThumbprint, browserKeyThumbprintInput, BROWSER_PROOF_HEADER,
+} from './browserKey';
+export type { BrowserKey, BrowserKeyOptions, BrowserKeyStore, BrowserProof, BrowserKeyJwk } from './browserKey';
 
 // Matches touchqueRouter's default mount paths in @touchque/node exactly —
 // pairing the two needs zero `paths` config.
@@ -69,6 +75,12 @@ export interface TouchQueWeb {
   classic2fa: ClassicTwoFactor;
   /** Offline Sign — QR challenge / typed code for a phone with no internet. */
   offline: OfflineSign;
+  /**
+   * This browser's device-bound key for silent sign-ins (the shared
+   * `browserKey`, or the one passed as `config.browserKey`). Its proof is
+   * sent only when `config.browserKey` is set.
+   */
+  browserKey: BrowserKey;
   behavioral: {
     /**
      * Attach the behavioral biometrics widget to a container. Unlike the
@@ -91,14 +103,18 @@ export function createTouchQueWeb(config: TouchQueWebConfig): TouchQueWeb {
   const offline = new OfflineSign(http, paths);
   const approveWithPasskey = (requestId: string) => passkeys.approveLogin({ requestId });
   classic2fa.approveWithPasskey = approveWithPasskey;
+  const key = config.browserKey && typeof config.browserKey === 'object' ? config.browserKey : defaultBrowserKey;
+  const browserProof = config.browserKey ? () => key.proof() : undefined;
+  classic2fa.browserProof = browserProof;
 
   return {
     fetch: (input, init, options) => touchqueFetch(input, { credentials: config.credentials ?? 'same-origin', ...init }, {
-      fetch: config.fetch, approveWithPasskey, ...options,
+      fetch: config.fetch, approveWithPasskey, browserProof, ...options,
     }),
     passkeys,
     classic2fa,
     offline,
+    browserKey: key,
     behavioral: {
       attach: (target, options) =>
         attachBehavioral(target, { fetch: config.fetch, ...options }),

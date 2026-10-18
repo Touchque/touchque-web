@@ -108,6 +108,41 @@ real-time phishing proxy relaying it, TouchQue refuses the approval and the phon
 canary host (your TouchQue API host) in your Content-Security-Policy `img-src` and `connect-src`. If you
 render steps without `touchqueFetch`, call `sendCanary(step.canary)` once yourself.
 
+## Silent sign-ins (stop asking when nothing is new)
+
+A user who approved on the phone in this browser a little while ago, with nothing new about the sign-in since,
+does not need another push. TouchQue's risk engine decides; your server skips the push only when it says so.
+
+```typescript
+import { createTouchQueWeb } from '@touchque/web';
+
+const tq = createTouchQueWeb({ baseUrl: 'https://api.example.com', browserKey: true });
+
+const result = await tq.classic2fa.login({ onStep }); // or tq.fetch('/api/...') on a guarded route
+if (result.assurance?.method === 'silent') {
+  // a known browser: no push was sent
+}
+```
+
+With `browserKey: true` the SDK keeps one ECDSA P-256 key for your site in this browser (WebCrypto,
+non-extractable, in IndexedDB `touchque` / `keys`) and sends a fresh signed proof of it in the
+`X-TouchQue-Browser` header with every guarded request and the classic 2FA login. Turn on `silentSignIn` in your
+server SDK (3.5.0). The first approval on the phone in this browser makes it known. Later, when TouchQue finds
+nothing new (the same browser, a recent approval from the phone linked now, a familiar country and network, no
+risk signal, an everyday action), your server lets the user in at once. Anything else asks the phone as usual.
+
+- No WebCrypto (an http page other than localhost) or no IndexedDB (some private windows and sandboxed frames):
+  no header is sent and sign-ins ask the phone as before. Nothing throws, and a stuck IndexedDB is given up on
+  after 2 seconds.
+- A relay on another origin must allow `X-TouchQue-Browser` in `Access-Control-Allow-Headers`.
+- `tq.browserKey.forget()` (or `browserKey.forget()`) deletes this browser's key, so the next sign-in counts as a
+  new browser. Use it on shared computers and on "sign out everywhere", and forget the user's browsers on the
+  server too (`risk.forgetBrowsers`).
+- `await browserKey.thumbprint()` is this browser's key thumbprint as the server's `risk.browsers` lists it, to
+  mark "this browser" in an approved-browsers list (`null` before the first proof).
+- Without `createTouchQueWeb`: `touchqueFetch(url, init, { browserProof: browserKey.proof })`, or put
+  `await browserKey.proof()` (`null` when unavailable) in the `X-TouchQue-Browser` header yourself.
+
 ## Privacy
 
 What this package sends, and how long TouchQue keeps it. Mention it in your
@@ -143,16 +178,24 @@ On the server, keyed hashes of these are kept as follows:
 a frame, the host of `document.referrer`, and the address the request came from, kept with the sign-in
 request it belongs to.
 
+**Silent sign-ins** (only with `browserKey: true`): the public half of this browser's key, your page's origin,
+the time and a random nonce, signed with the key. The private key never leaves the browser. TouchQue keeps the
+key's thumbprint with the user who approved in that browser, with when it was last approved and last used;
+`risk.forgetBrowsers` on your server removes it.
+
 ## Security
 
 - This package never sees your API secret — it only ever calls your backend.
 - The `X-TouchQue-Token` it echoes back is opaque to the browser; it's signed
   server-side and bound to one user + action + transaction.
+- The browser key cannot be read out by script (non-extractable). Each proof names your page's origin and is
+  fresh: TouchQue accepts its nonce once, and only within 5 minutes of its time.
 - See [SECURITY.md](./SECURITY.md) to report a vulnerability.
 
 ## Requirements
 
 - A browser with `fetch` and (for passkeys) WebAuthn support.
+- For silent sign-ins: a secure context (https or localhost) with IndexedDB.
 - A TouchQue server SDK on your backend relaying the requests.
 
 ## License

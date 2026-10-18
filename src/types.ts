@@ -1,3 +1,5 @@
+import type { BrowserKey } from './browserKey';
+
 /**
  * The relay endpoint paths on the *partner's own backend*. The browser SDK
  * never talks to TouchQue directly for passkey ceremonies — the partner
@@ -52,6 +54,16 @@ export interface TouchQueWebConfig {
   headers?: Record<string, string>;
   /** Injectable fetch implementation. Defaults to the global `fetch`. */
   fetch?: typeof fetch;
+  /**
+   * Silent sign-ins (server SDKs 3.5.0 with `silentSignIn`). `true` sends a
+   * fresh proof of this browser's device-bound key (`X-TouchQue-Browser`)
+   * with guarded requests (`fetch`) and the classic 2FA login: the user's
+   * approval makes the browser known, and a later sign-in from it skips the
+   * phone when nothing about it is new. Pass a key from `createBrowserKey()`
+   * to use your own. Off by default. Without WebCrypto or IndexedDB no header
+   * is sent and sign-ins ask the phone as before.
+   */
+  browserKey?: boolean | BrowserKey;
 }
 
 export interface PasskeySummary {

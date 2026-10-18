@@ -3,6 +3,27 @@
 All notable changes to this project will be documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.0] — 2026-10-18 — Silent sign-ins
+
+### Added
+- **Silent sign-ins.** `createTouchQueWeb({ browserKey: true })` sends a fresh proof of this browser's
+  device-bound key in the `X-TouchQue-Browser` header with guarded requests (`tq.fetch`) and
+  `classic2fa.login`. With `silentSignIn` on in a server SDK (3.5.0), the first phone approval in this
+  browser makes it known, and a later sign-in with nothing new about it gets in without a push
+  (`assurance.method: 'silent'`, `requestId: 'silent'`). Anything else asks the phone as before. Off by
+  default.
+- `browserKey`: one ECDSA P-256 key pair per origin, made with WebCrypto as non-extractable and kept in
+  IndexedDB (database `touchque`, store `keys`, key `browser-key-v1`). `proof()` resolves the header value
+  (base64url JSON: `v`, `jwk`, `aud` = `location.origin`, `iat`, a 16-byte `nonce`, the P1363 `sig` over
+  `touchque-browser:v1\n{aud}\n{iat}\n{nonce}`), or `null` when WebCrypto or IndexedDB is unavailable or
+  takes over 2 s; it never throws. `thumbprint()` gives the key's RFC 7638 thumbprint as the server's
+  `risk.browsers` lists it; `forget()` deletes the key. `tq.browserKey`;
+  `createBrowserKey({ store, crypto, origin, now, timeoutMs })` for your own storage.
+- `browserProofMessage`, `browserKeyThumbprint`, `browserKeyThumbprintInput`, `BROWSER_PROOF_HEADER`, and
+  `TouchQueFetchOptions.browserProof` (for `touchqueFetch` without `createTouchQueWeb`).
+- Types `BrowserKey`, `BrowserKeyOptions`, `BrowserKeyStore`, `BrowserProof`, `BrowserKeyJwk`;
+  `TouchQueWebConfig.browserKey`.
+
 ## [1.3.0] — 2026-10-18
 
 ### Added

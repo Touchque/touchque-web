@@ -35,8 +35,13 @@ export interface LinkStatus {
 
 export interface ClassicLoginResult {
   status: 'success';
+  /** `'silent'` when the server let a known browser in without the phone. */
   requestId: string;
-  /** How it was approved; `phishingResistant` is true only for passkeys. */
+  /**
+   * How it was approved; `phishingResistant` is true only for passkeys.
+   * `method: 'silent'` (server `silentSignIn`, `browserKey: true` here): no
+   * push was sent, nothing about this browser's sign-in was new.
+   */
   assurance?: { phishingResistant: boolean; method: string };
 }
 
@@ -109,7 +114,10 @@ export class ClassicTwoFactor {
     const res = await this.http.stepUp(
       this.paths.login,
       input.externalUsername ? { externalUsername: input.externalUsername } : {},
-      { onStep: input.onStep, signal: input.signal, pollIntervalMs: input.pollIntervalMs, approveWithPasskey: this.approveWithPasskey, telemetry: input.telemetry },
+      {
+        onStep: input.onStep, signal: input.signal, pollIntervalMs: input.pollIntervalMs, approveWithPasskey: this.approveWithPasskey,
+        telemetry: input.telemetry, browserProof: this.browserProof,
+      },
     );
     const body = await res.json().catch(() => null);
     if (res.ok) return body as ClassicLoginResult;
@@ -121,4 +129,7 @@ export class ClassicTwoFactor {
 
   /** @internal set by createTouchQueWeb so passkey-only policies just work. */
   approveWithPasskey?: (requestId: string) => Promise<unknown>;
+
+  /** @internal set by createTouchQueWeb with `browserKey: true` (silent sign-ins). */
+  browserProof?: () => Promise<string | null>;
 }
