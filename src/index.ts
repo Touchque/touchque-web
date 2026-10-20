@@ -43,6 +43,17 @@ export {
   browserKey, createBrowserKey, browserProofMessage, browserKeyThumbprint, browserKeyThumbprintInput, BROWSER_PROOF_HEADER,
 } from './browserKey';
 export type { BrowserKey, BrowserKeyOptions, BrowserKeyStore, BrowserProof, BrowserKeyJwk } from './browserKey';
+export {
+  ApprovalController, createApproval, describeApprovalStep, approvalTimeLeft, isPngDataUrl, DEFAULT_APPROVAL_TEXTS,
+} from './approval';
+export type { ApprovalState, ApprovalPhase, ApprovalError, ApprovalTexts, ApprovalOptions } from './approval';
+export { defineTouchQueApproval, APPROVAL_ICONS } from './approvalElement';
+export type { TouchQueApprovalElement } from './approvalElement';
+export { APPROVAL_STYLES } from './approvalStyles';
+export { isPasskeyAutofillAvailable } from './passkeys';
+export type { PasskeyAutofillOptions } from './passkeys';
+export { shouldOfferPasskey, dismissPasskeyOffer, rememberPasskey, forgetPasskeyOffer } from './upgrade';
+export type { PasskeyOfferOptions } from './upgrade';
 
 // Matches touchqueRouter's default mount paths in @touchque/node exactly —
 // pairing the two needs zero `paths` config.

@@ -31,6 +31,19 @@ export class PasskeyDismissedError extends TouchQueWebError {
 }
 
 /**
+ * `passkeys.register()` / `upgrade()`: this device's authenticator already
+ * holds a passkey for this account (the browser's `InvalidStateError`), so
+ * there is nothing to add. `upgrade()` remembers it, so the offer is not
+ * shown again in this browser.
+ */
+export class PasskeyAlreadyRegisteredError extends TouchQueWebError {
+  constructor(message = 'This device already has a passkey for this account.') {
+    super(message);
+    this.name = 'PasskeyAlreadyRegisteredError';
+  }
+}
+
+/**
  * The account has no passkey registered. The relay backend returned 404 (or
  * `error: "no_passkey_registered"`). The caller should fall back to another
  * sign-in method (e.g. password).
@@ -83,12 +96,20 @@ export class EnrollmentCancelledError extends TouchQueWebError {
 export class TouchQueWebAPIError extends TouchQueWebError {
   public readonly status: number;
   public readonly body: unknown;
+  /**
+   * "Why?": the case code of a refusal (`K7P-2QX`) when the server sent one
+   * (the step's or the body's `caseCode`). Show it: "Tell your support team: K7P-2QX".
+   */
+  public readonly caseCode: string | undefined;
 
   constructor(status: number, body: unknown, message?: string) {
     super(message || `Relay request failed with HTTP ${status}`);
     this.name = 'TouchQueWebAPIError';
     this.status = status;
     this.body = body;
+    const b = (body && typeof body === 'object' ? body : {}) as { caseCode?: unknown; touchque?: { caseCode?: unknown } };
+    const code = b.touchque && typeof b.touchque.caseCode === 'string' ? b.touchque.caseCode : b.caseCode;
+    this.caseCode = typeof code === 'string' && code ? code : undefined;
   }
 }
 

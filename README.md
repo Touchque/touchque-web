@@ -44,6 +44,48 @@ const res = await touchqueFetch('/api/transfer', { method: 'POST', body }, {
 `touchqueFetch` re-sends the request with `X-TouchQue-Token` on an interval
 until the step resolves — no manual polling loop to write.
 
+## Drop-in approval dialog (no UI to write)
+
+`<touchque-approval>` is the step-up UI, ready made: a web component that works with any framework or none.
+
+```html
+<touchque-approval base-url="/touchque"></touchque-approval>
+
+<script type="module">
+  import { defineTouchQueApproval } from '@touchque/web';
+  defineTouchQueApproval();
+
+  const dialog = document.querySelector('touchque-approval');
+  const res = await dialog.fetch('/api/transfer', { method: 'POST', body }); // your guarded route
+</script>
+```
+
+The dialog opens only when your server asks for an approval, and shows each step:
+
+- the push wait, with the number to pick on the phone, a countdown and why the phone is asked;
+- the QR to link a phone the first time, with the recovery codes;
+- "Verify offline": the offline QR, its number and the code input (or the 6-digit time-based code);
+- the passkey step, behind a button (Safari needs a click for WebAuthn);
+- refusals (rejected, expired, blocked, paused, rate limited) with their case code.
+
+`dialog.fetch()` resolves with your route's response. Closing the dialog while it waits rejects with an
+`AbortError`. `dialog.login()` runs the classic push sign-in through `touchqueRouter`'s `/login` the same way.
+
+- `base-url`: where `touchqueRouter` (or your relay) is mounted; it serves the passkey step.
+  `credentials="include"` for a cookie session on another origin. Or set the `config` property to a full
+  `createTouchQueWeb` config.
+- `theme`: `light` (default), `dark` or `auto`. Restyle with CSS variables on the element:
+  `--tq-approval-accent`, `-accent-fg`, `-bg`, `-fg`, `-muted`, `-border`, `-danger`, `-radius`, `-font`.
+- `options`: `{ texts, pollIntervalMs, telemetry, approvedMs }`. Every text is in `DEFAULT_APPROVAL_TEXTS`;
+  override any of them, for example to translate.
+- Events: `touchque-step` (`detail.step`), `touchque-approved`, `touchque-error` (`detail.error`),
+  `touchque-close`.
+- Your own UI on the same logic: `createApproval(config)` returns the headless controller
+  (`subscribe`, `getState`, `fetch`, `login`, `useOffline`, `submitCode`, `continueWithPasskey`, `cancel`).
+
+A runnable example, with a fake API to try every screen without a phone, is in
+[`examples/approval/`](./examples/approval/server.mjs). React: `<TouchQueApproval>` in `@touchque/react`.
+
 ## Passkeys
 
 ```typescript
@@ -62,6 +104,59 @@ if (result.ok) {
 `createTouchQueWeb`'s default relay paths (`/passkey/register/options`,
 `/enroll/start`, `/login`, …) match `touchqueRouter` from `@touchque/node`
 exactly, so pairing the two needs zero `paths` configuration.
+
+### Passkey autofill
+
+Let the browser offer the user's passkeys in the email field's autofill, next to saved addresses (WebAuthn
+conditional mediation). Picking one signs in; nobody types an email.
+
+```html
+<input type="email" name="email" autocomplete="username webauthn">
+```
+
+```typescript
+const controller = new AbortController();
+const result = await tq.passkeys.autofill({ input: 'input[name=email]', signal: controller.signal });
+if (result?.ok) {
+  // signed in, like passkeys.authenticate()
+}
+```
+
+- It never opens a modal. In a browser without passkey autofill it resolves `null` at once, so keep your normal
+  form and "Sign in with a passkey" button.
+- Start it once when the sign-in form shows and abort it when the form goes away. A passkey button
+  (`passkeys.authenticate`) takes over from it; start autofill again when the form is back. Never restart it on
+  an error: it retries by itself only what may pass later (a network error, 408, 5xx; after 1, 2, 4 s,
+  `maxRetries`), throws at once on a refusal (400, 401, 403, 429…), and one client stops asking after 5
+  failures in a page view. Passwordless sign-in turned off resolves `null`.
+- It waits while the tab is hidden and closes its open request when the tab is hidden.
+- A pick your server refuses (a passkey it no longer knows) goes to `onError` and autofill opens again.
+- The relay is asked for options with no `email`, so they accept any passkey of your site. `touchqueRouter`
+  and the other server SDK relays (4.0.0) do this, and the passkey the user picks names the account.
+- Options are fetched again every 4 minutes (`refreshMs`), before TouchQue's 5-minute challenge runs out. A
+  passkey your server no longer knows is reported to the browser
+  (`PublicKeyCredential.signalUnknownCredential`), so it stops offering it.
+
+### Password → passkey
+
+Right after a password or email-link sign-in, offer to add a passkey on this device, once per browser:
+
+```typescript
+import { shouldOfferPasskey, dismissPasskeyOffer } from '@touchque/web';
+
+if (await shouldOfferPasskey({ user: email })) {
+  // show "Add a passkey" / "Not now"
+  // Add:     await tq.passkeys.upgrade({ user: email, onStep }); // the phone approves first if one is linked
+  // Not now: dismissPasskeyOffer(email);
+}
+```
+
+`shouldOfferPasskey` is true when WebAuthn and a built-in authenticator (Touch ID, Face ID, Windows Hello,
+Android screen lock) are available, the user has not said "Not now" in this browser, and no passkey of theirs
+was made or used here. The marks are kept in `localStorage` under a hash of the user, never the id itself.
+`upgrade` registers through your relay's `/passkey/register/*` (`touchqueRouter` needs `getUserId`) and
+remembers it; a device that already holds one throws `PasskeyAlreadyRegisteredError`. The full migration
+guide is in the [docs](https://authenticator.touchque.com/docs/passkey-migration).
 
 ## Classic push 2FA (enroll + login)
 
@@ -142,6 +237,12 @@ risk signal, an everyday action), your server lets the user in at once. Anything
   mark "this browser" in an approved-browsers list (`null` before the first proof).
 - Without `createTouchQueWeb`: `touchqueFetch(url, init, { browserProof: browserKey.proof })`, or put
   `await browserKey.proof()` (`null` when unavailable) in the `X-TouchQue-Browser` header yourself.
+
+## "Why?": case codes
+
+Steps from server SDKs 4.0.0 carry `caseCode` (`K7P-2QX`) and `reasons`. Show the code with the step or the
+refusal, "Tell your support team: K7P-2QX"; your team opens the whole decision by it in the TouchQue dashboard.
+`TouchQueWebAPIError.caseCode` carries it on refusals.
 
 ## Privacy
 

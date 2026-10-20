@@ -39,6 +39,14 @@ export interface Step {
     challengeCode?: string;
   };
   reason?: string;
+  /**
+   * "Why?" (server SDKs 4.0.0): the case code of this decision (`K7P-2QX`).
+   * Show it with the step ("Tell your support team: K7P-2QX"); the team opens
+   * the whole decision by this code in the TouchQue dashboard.
+   */
+  caseCode?: string;
+  /** Why number matching, a passkey or a refusal (plain English, a fixed list, never a score). */
+  reasons?: Array<{ code: string; text: string }>;
   retryAfter?: number;
   assurance?: { phishingResistant: boolean; method: string };
   /** Only when the workspace collects behavioural signals (see `TouchQueFetchOptions.telemetry`). */

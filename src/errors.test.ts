@@ -34,3 +34,9 @@ describe('error classes', () => {
     expect(new TouchQueWebAPIError(502, null).message).toContain('502');
   });
 });
+
+test('TouchQueWebAPIError carries the case code of a refusal (step first, then body)', () => {
+  expect(new TouchQueWebAPIError(403, { touchque: { state: 'blocked', reason: 'risk', caseCode: 'K7P-2QX' } }).caseCode).toBe('K7P-2QX');
+  expect(new TouchQueWebAPIError(403, { error: 'blocked', caseCode: 'REF-USE' }).caseCode).toBe('REF-USE');
+  expect(new TouchQueWebAPIError(500, { error: 'x' }).caseCode).toBeUndefined();
+});

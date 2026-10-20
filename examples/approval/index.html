@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TouchQue approval dialog</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 34rem; margin: 3rem auto; padding: 0 1rem; color: #111827; }
+    h1 { font-size: 22px; margin: 0 0 .25rem; }
+    p { color: #4b5563; margin: 0 0 1.25rem; }
+    .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin: .75rem 0; }
+    input, button { font: inherit; padding: .55rem .8rem; border-radius: .5rem; border: 1px solid #d1d5db; }
+    button { cursor: pointer; background: #111827; color: #fff; border-color: #111827; }
+    button.ghost { background: #fff; color: #111827; }
+    pre { background: #f4f4f5; padding: .75rem; border-radius: .5rem; overflow: auto; min-height: 1.5rem; }
+    fieldset { border: 1px dashed #d1d5db; border-radius: .5rem; margin-top: 2rem; }
+    legend { color: #6b7280; font-size: 13px; }
+  </style>
+  <!-- @touchque/web imports @simplewebauthn/browser by name; a bundler resolves it in a real app. -->
+  <script type="importmap">
+    { "imports": { "@simplewebauthn/browser": "/vendor/simplewebauthn/index.js" } }
+  </script>
+</head>
+<body>
+  <h1>Send money</h1>
+  <p>The server asks for an approval on the phone; the dialog shows each step.</p>
+
+  <div class="row">
+    <input id="amount" type="number" value="250" min="1" aria-label="Amount in EUR" />
+    <button id="send">Send</button>
+  </div>
+  <pre id="out" aria-live="polite"></pre>
+
+  <!-- The whole integration: one element… -->
+  <touchque-approval base-url="/touchque"></touchque-approval>
+
+  <fieldset>
+    <legend>Fake API (only with testing/fake-touchque-api.mjs)</legend>
+    <div class="row">
+      <button class="ghost" data-fake="link">Link the demo user's phone</button>
+      <button class="ghost" data-fake="approve">Approve on the phone</button>
+      <button class="ghost" data-fake="reject">Reject on the phone</button>
+      <button class="ghost" data-fake="escalate">Ask for a passkey</button>
+      <button class="ghost" data-fake="reset">Reset</button>
+    </div>
+  </fieldset>
+
+  <script type="module">
+    import { defineTouchQueApproval } from '/sdk/index.mjs';
+
+    defineTouchQueApproval();
+    const dialog = document.querySelector('touchque-approval');
+    const out = document.getElementById('out');
+
+    // …and one call: fetch() through the dialog instead of window.fetch.
+    document.getElementById('send').onclick = async () => {
+      out.textContent = '';
+      try {
+        const res = await dialog.fetch('/api/transfer', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: Number(document.getElementById('amount').value) }),
+        });
+        out.textContent = `${res.status} ${JSON.stringify(await res.json())}`;
+      } catch (err) {
+        out.textContent = err.name === 'AbortError' ? 'Cancelled.' : String(err);
+      }
+    };
+
+    dialog.addEventListener('touchque-step', (e) => console.log('step', e.detail.step));
+
+    for (const b of document.querySelectorAll('[data-fake]')) {
+      b.onclick = () => fetch(`/fake/${b.dataset.fake}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+        .then((r) => r.json()).then((j) => { out.textContent = `fake ${b.dataset.fake}: ${JSON.stringify(j)}`; });
+    }
+  </script>
+</body>
+</html>

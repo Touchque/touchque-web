@@ -3,6 +3,47 @@
 All notable changes to this project will be documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.5.0] — 2026-10-20 — "Why?" case codes, drop-in approval dialog, passkey autofill
+
+### Added
+- **`<touchque-approval>`**, a drop-in approval dialog (web component, no framework). `defineTouchQueApproval()`
+  registers it; `dialog.fetch(url, init)` calls a route guarded by any server SDK and `dialog.login()` runs the
+  classic push sign-in. It opens only when the server asks for an approval and shows each step: the number to
+  pick on the phone with a countdown and the reasons, the first-time link QR with recovery codes, the offline QR
+  with its number and the code input (or the time-based code), the passkey step (a button, as Safari needs a
+  click), and refusals with their case code. Escape or the close button cancels (`AbortError`). Attributes
+  `base-url`, `credentials`, `theme` (`light`, `dark`, `auto`); properties `config`, `options`
+  (`texts`, `pollIntervalMs`, `telemetry`, `approvedMs`); events `touchque-step`, `touchque-approved`,
+  `touchque-error`, `touchque-close`. Restyle it with `--tq-approval-*` CSS variables. Example in
+  `examples/approval/`.
+- `createApproval(config, options)` / `ApprovalController`: the dialog's state machine without UI
+  (`getState`, `subscribe`, `fetch`, `login`, `useOffline`, `submitCode`, `setCodeType`, `continueWithPasskey`,
+  `cancel`, `close`), for your own rendering; `@touchque/react`'s `<TouchQueApproval>` uses it. Also
+  `describeApprovalStep`, `approvalTimeLeft`, `DEFAULT_APPROVAL_TEXTS`, `APPROVAL_STYLES`, `APPROVAL_ICONS`
+  and the types `ApprovalState`, `ApprovalPhase`, `ApprovalError`, `ApprovalTexts`, `ApprovalOptions`.
+- **Passkey autofill** (WebAuthn conditional mediation): `tq.passkeys.autofill({ input, context, signal })`
+  lists the user's saved passkeys in the email field's autofill and resolves like `authenticate()` once one is
+  picked, with no email typed. It never opens a modal: without browser support it resolves `null` at once, as it
+  does when `signal` aborts, passwordless sign-in is off or a passkey button takes over. Call it once per time the
+  form shows; it never loops on errors: a failing options call is retried only for a network error, 408 or 5xx
+  (after 1, 2, 4 s, `maxRetries` default 3), a refusal (400, 401, 403, 429…) throws at once, and after 5
+  failures a client stops asking for the page view. It waits while the tab is hidden and closes its request
+  when the tab is hidden. A refused pick goes to `onError` and autofill opens again (at most `maxRetries`
+  times). Options are fetched again every 4 minutes (`refreshMs`), before the challenge runs out, and a passkey
+  the server no longer knows is reported to the browser (`PublicKeyCredential.signalUnknownCredential`). Needs a relay that answers
+  `/passkey/authenticate/options` without an email (server SDKs 4.0.0). `isPasskeyAutofillAvailable()`.
+- **Password → passkey**: `shouldOfferPasskey({ user })` says whether to offer "Add a passkey" after a password
+  or email-link sign-in (WebAuthn and a built-in authenticator here, no "Not now" here before, no passkey of
+  this user used or made in this browser), `dismissPasskeyOffer(user)` remembers "Not now" in this browser
+  (`remindAfterDays` to ask again), `tq.passkeys.upgrade({ user, label, onStep })` registers one and remembers
+  it, `rememberPasskey` / `forgetPasskeyOffer`. The marks are kept in `localStorage` under a hash of the user,
+  never the user id itself. A successful `passkeys.authenticate()` marks the browser too.
+- `PasskeyAlreadyRegisteredError`: `register()` / `upgrade()` on a device that already holds a passkey for the
+  account (the browser's `InvalidStateError`).
+- `Step.caseCode` and `Step.reasons` (server SDKs 3.7.0): the case code of the decision (`K7P-2QX`) and why number
+  matching, a passkey or a refusal. Show the code with the step: "Tell your support team: K7P-2QX".
+- `TouchQueWebAPIError.caseCode`: the case code of a refusal, from the step or the body.
+
 ## [1.4.0] — 2026-10-18 — Silent sign-ins
 
 ### Added
