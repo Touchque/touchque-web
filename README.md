@@ -250,9 +250,6 @@ anything about it asks for more.
 
 ### One line on the page, one on your server
 
-> **Not live yet:** `cdn.touchque.com` does not serve the tag yet. Until it does, install `@touchque/web` from npm
-> and call `installDeviceRiskTag({ siteKey, purpose })` (see below); it does the same as the tag.
-
 ```html
 <script src="https://cdn.touchque.com/device/v1.6.0/device.js" data-site-key="tqpk_…" data-purpose="sign_in"
         integrity="sha384-…" crossorigin="anonymous" async></script>
@@ -297,6 +294,135 @@ answers (`report: 'missing'`, or `'unknown'` / `'expired'` for one that does not
 `device_identification_missing`. Ad blockers block such scripts for honest people too, so that signal only ever asks
 for a number-matched step-up, never refuses, and starts in shadow like the others. Removing or blocking the tag
 gets the visitor a step-up at most, never a way past a check.
+
+### From your own domain (first-party)
+
+Ad blockers and browser privacy lists drop scripts and calls to known third-party fingerprinting hosts, for honest
+visitors too (they then get `device_identification_missing`, a step-up at most). Big sites serve the tag and its
+identify call from their own domain instead, like Fingerprint's proxy integrations: two paths under `/_tq/` on your
+site, passed on to Touchque.
+
+| Your path | Goes to |
+|---|---|
+| `GET /_tq/device/vX.Y.Z/device.js` | `https://cdn.touchque.com/device/vX.Y.Z/device.js` (the same bytes, so the same `integrity`) |
+| `POST /_tq/device-risk/identify` | `https://api.touchque.com/device-risk/identify` |
+
+The tag then points at your domain (`data-api` is where it sends the identify call):
+
+```html
+<script src="https://www.example.com/_tq/device/v1.6.0/device.js" data-site-key="tqpk_…" data-purpose="sign_in"
+        data-api="https://www.example.com/_tq" integrity="sha384-…" crossorigin="anonymous" async></script>
+```
+
+Your Content-Security-Policy needs only `'self'` for both (`script-src`, `connect-src`).
+
+**The proxy secret.** Behind your proxy every visitor reaches Touchque from your proxy's address. Send the visitor's
+address as `X-Touchque-Client-IP` together with your workspace's proxy secret as `X-Touchque-Proxy-Secret`
+(`tqps_…`, dashboard → Device risk → Settings; owners and admins see it, and the API key reads it from
+`GET /device-risk/settings`). Touchque then records and scores the visitor's address and counts the per-address
+limit (60 identifications a minute) on it instead of on your proxy. Keep the secret on the server like the API key:
+an environment variable or a secret store, never in the page or in git. A wrong secret is
+`403 proxy_secret_invalid`; rotating the site key makes a new secret. Without the secret the proxy still works, but
+every visitor counts against the proxy's one address: fine for small sites only. Also pass the visitor's address as
+`clientIp` to `deviceRisk.check` (and `login.request`) on your server. Your own cookies are not needed: drop them
+on the way.
+
+**nginx** (in your site's `server` block):
+
+```nginx
+location /_tq/device/ {
+    proxy_pass https://cdn.touchque.com/device/;
+    proxy_ssl_server_name on;
+    proxy_set_header Cookie "";
+    proxy_set_header Authorization "";
+}
+location = /_tq/device-risk/identify {
+    limit_except POST { deny all; }
+    proxy_pass https://api.touchque.com/device-risk/identify;
+    proxy_ssl_server_name on;
+    proxy_set_header Cookie "";
+    proxy_set_header Authorization "";
+    proxy_set_header X-Forwarded-For "";
+    proxy_set_header X-Touchque-Proxy-Secret "tqps_…";   # from Device risk → Settings; keep this file out of git
+    proxy_set_header X-Touchque-Client-IP $remote_addr;  # behind a load balancer: set_real_ip_from + real_ip_header first
+}
+```
+
+**Cloudflare Worker** (route `www.example.com/_tq/*`; `wrangler secret put TOUCHQUE_PROXY_SECRET`):
+
+```js
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (request.method === 'GET' && url.pathname.startsWith('/_tq/device/')) {
+      return fetch('https://cdn.touchque.com/device/' + url.pathname.slice('/_tq/device/'.length));
+    }
+    if (request.method === 'POST' && url.pathname === '/_tq/device-risk/identify') {
+      return fetch('https://api.touchque.com/device-risk/identify', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain',
+          Origin: request.headers.get('Origin') || '',
+          'X-Touchque-Proxy-Secret': env.TOUCHQUE_PROXY_SECRET,
+          'X-Touchque-Client-IP': request.headers.get('CF-Connecting-IP') || '',
+        },
+        body: await request.text(),
+      });
+    }
+    return new Response('Not found', { status: 404 });
+  },
+};
+```
+
+**Next.js middleware** (`middleware.ts`, on Vercel or your own server; Next.js 16 calls the file `proxy.ts` and the
+function `proxy`; `TOUCHQUE_PROXY_SECRET` in the project's environment variables):
+
+```ts
+import { NextRequest, NextResponse } from 'next/server';
+
+export const config = { matcher: '/_tq/:path*' };
+
+export async function middleware(req: NextRequest) {
+  const { pathname } = req.nextUrl;
+  if (req.method === 'GET' && pathname.startsWith('/_tq/device/')) {
+    return NextResponse.rewrite(new URL('https://cdn.touchque.com/device/' + pathname.slice('/_tq/device/'.length)));
+  }
+  if (req.method === 'POST' && pathname === '/_tq/device-risk/identify') {
+    const r = await fetch('https://api.touchque.com/device-risk/identify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain',
+        Origin: req.headers.get('origin') ?? '',
+        'X-Touchque-Proxy-Secret': process.env.TOUCHQUE_PROXY_SECRET ?? '',
+        // On Vercel the first x-forwarded-for entry is the visitor; behind your own load balancer, its header.
+        'X-Touchque-Client-IP': (req.headers.get('x-forwarded-for') ?? '').split(',')[0].trim(),
+      },
+      body: await req.text(),
+    });
+    return new Response(r.body, { status: r.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
+  }
+  return new Response('Not found', { status: 404 });
+}
+```
+
+If you already have a middleware, add the two `/_tq/` branches at its top and `'/_tq/:path*'` to its matcher.
+
+**Vercel rewrites** (`vercel.json`, any framework). A rewrite cannot add the proxy secret, so this suits small sites;
+at volume, use the middleware above (or a Vercel function doing the same) for the identify path:
+
+```json
+{
+  "rewrites": [
+    { "source": "/_tq/device/:path*", "destination": "https://cdn.touchque.com/device/:path*" },
+    { "source": "/_tq/device-risk/identify", "destination": "https://api.touchque.com/device-risk/identify" }
+  ]
+}
+```
+
+A Touchque Login custom domain (verified) serves both paths itself: Device risk → Settings then shows the tag with
+`https://login.example.com/_tq`, nothing to proxy. In every case Touchque still checks the page's `Origin` against
+your verified domains and listed origins, so pass `Origin` on unchanged (nginx passes it as it came; the Worker and
+the middleware set it).
 
 ### From your own code
 
