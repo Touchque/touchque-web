@@ -9,7 +9,7 @@
 // can never block or surface an error on the partner's 2FA flow.
 
 import { createBehavioralTracker } from './tracker';
-import { generateDeviceFingerprint, collectDeviceSignals, type DeviceSignals } from './fingerprint';
+import { createDeviceRisk } from '../deviceRisk';
 
 export { collectDeviceSignals } from './fingerprint';
 export type { DeviceSignals } from './fingerprint';
@@ -24,10 +24,10 @@ export interface AttachBehavioralOptions {
   /** TouchQue API base URL, e.g. `https://api.touchque.com`. */
   apiBaseUrl: string;
   /**
-   * Opt in to device recognition (bigger privacy footprint): a stable
-   * per-browser id plus hardware/OS traits (WebGL, audio, fonts, screen,
-   * timezone). Only used when the workspace also enables
-   * `deviceFingerprintingEnabled`; disclose it in your privacy notice.
+   * Opt in to Device risk on this page (bigger privacy footprint): the
+   * telemetry carries the page's device report (`deviceRisk.collect`), which
+   * TouchQue identifies as a visitor of your workspace. Only used when the
+   * workspace turned Device risk on; disclose it in your privacy notice.
    */
   collectDeviceFingerprint?: boolean;
   /** Sampling interval (ms) for the internal tracker. Default 1000. */
@@ -78,27 +78,22 @@ export function attachBehavioral(
     sampleIntervalMs: options.sampleIntervalMs,
   });
 
-  // v1 hash (kept for the server's drift comparison) + v2 signals, collected
-  // once; the async v2 collection never delays tracking or the first submit
-  // beyond ~1.5 s (audio probe timeout).
-  let fingerprint: string | null = null;
-  let signalsPromise: Promise<DeviceSignals> | null = null;
+  // The page's Device risk report, collected once; the async collection
+  // never delays tracking or the first submit beyond ~1.5 s (audio probe).
+  let reportPromise: Promise<string> | null = null;
   if (options.collectDeviceFingerprint === true) {
-    fingerprint = generateDeviceFingerprint();
-    signalsPromise = collectDeviceSignals();
+    reportPromise = createDeviceRisk().collect({ purpose: 'sign_in' });
   }
 
   tracker.start();
 
   async function submit(): Promise<void> {
     const metrics = tracker.getMetrics();
-    let body: Record<string, unknown> = { ...metrics };
-    if (fingerprint) {
-      body.deviceFingerprint = fingerprint;
+    const body: Record<string, unknown> = { ...metrics };
+    if (reportPromise) {
       try {
-        const signals = signalsPromise ? await signalsPromise : null;
-        if (signals) body.deviceSignals = { deviceId: signals.deviceId, fingerprint: signals.fingerprint, traits: signals.traits, version: signals.version };
-      } catch { /* v1 fingerprint alone still goes out */ }
+        body.deviceRisk = await reportPromise;
+      } catch { /* the movement aggregates still go out */ }
     }
     try {
       await doFetch(`${apiBaseUrl}/login/${encodeURIComponent(options.requestId)}/telemetry`, {

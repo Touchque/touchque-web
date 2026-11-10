@@ -190,6 +190,29 @@ describe('passkeys.authenticate', () => {
     );
   });
 
+  test('a bare 404 / 403 (no body) still maps to the passkey errors', async () => {
+    const { fn } = fetchStub([{ status: 404 }, { status: 403 }]);
+    const tq = createTouchQueWeb({ baseUrl: 'https://x', fetch: fn });
+    await expect(tq.passkeys.authenticate({ email: 'u@x.com' })).rejects.toBeInstanceOf(PasskeyNotRegisteredError);
+    await expect(tq.passkeys.authenticate({ email: 'u@x.com' })).rejects.toBeInstanceOf(PasskeyDisabledError);
+  });
+
+  test('a 403 / 404 page from a CSRF check, a WAF or a router is not a passkey error', async () => {
+    const pages = [
+      new Response('<!doctype html><title>Forbidden</title>invalid csrf token', { status: 403, headers: { 'Content-Type': 'text/html' } }),
+      new Response('Cannot POST /touchque/passkey/authenticate/options', { status: 404, headers: { 'Content-Type': 'text/html' } }),
+      new Response(JSON.stringify({ message: 'Missing Authentication Token' }), { status: 403, headers: { 'Content-Type': 'application/json' } }),
+    ];
+    const tq = createTouchQueWeb({ baseUrl: 'https://x', fetch: vi.fn(async () => pages.shift()!) as unknown as typeof fetch });
+    for (const status of [403, 404, 403]) {
+      const err = await tq.passkeys.authenticate({ email: 'u@x.com' }).catch((e) => e);
+      expect(err).toBeInstanceOf(TouchQueWebAPIError);
+      expect(err).not.toBeInstanceOf(PasskeyDisabledError);
+      expect(err).not.toBeInstanceOf(PasskeyNotRegisteredError);
+      expect(err.status).toBe(status);
+    }
+  });
+
   test('other non-2xx -> TouchQueWebAPIError carrying status + body', async () => {
     const { fn } = fetchStub([{ status: 500, body: { error: 'boom', message: 'relay down' } }]);
     const tq = createTouchQueWeb({ baseUrl: 'https://x', fetch: fn });

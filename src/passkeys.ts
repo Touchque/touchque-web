@@ -8,7 +8,7 @@ import {
 } from '@simplewebauthn/browser';
 import type { RelayHttp } from './http';
 import type { TouchQuePaths, RegisterResult, AuthenticateResult, ApproveResult, PasskeySummary } from './types';
-import { PasskeyAlreadyRegisteredError, PasskeyDisabledError, PasskeyDismissedError, PasskeyNotRegisteredError, TouchQueWebError, TouchQueWebAPIError } from './errors';
+import { PasskeyAlreadyRegisteredError, PasskeyDisabledError, PasskeyDismissedError, PasskeyNotRegisteredError, TouchQueWebError, TouchQueWebAPIError, webApiError } from './errors';
 import type { Step, StepControls } from './action';
 import { rememberPasskey } from './upgrade';
 
@@ -72,7 +72,7 @@ export class Passkeys {
     const optionsBody = await res.json().catch(() => null);
     if (!res.ok) {
       const step = (optionsBody as { touchque?: Step } | null)?.touchque;
-      throw new TouchQueWebAPIError(res.status, optionsBody, step?.reason || step?.state || 'register_options_failed');
+      throw webApiError(res.status, optionsBody, step?.reason || step?.state || 'register_options_failed');
     }
     const { options } = unwrapOptions(optionsBody);
     const response = await ceremony(() => startRegistration({ optionsJSON: options as never }));

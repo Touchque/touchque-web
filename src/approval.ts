@@ -91,6 +91,8 @@ export interface ApprovalTexts {
   supportCode: (code: string) => string;
   cancel: string;
   close: string;
+  /** The small line under the dialog. Translate it if you like, but keep the name TouchQue: a text without it shows the default. */
+  securedBy: string;
   errors: {
     rejected: string;
     expired: string;
@@ -151,6 +153,7 @@ export const DEFAULT_APPROVAL_TEXTS: ApprovalTexts = {
   supportCode: (code) => `Tell your support team: ${code}`,
   cancel: 'Cancel',
   close: 'Close',
+  securedBy: 'Secured by TouchQue',
   errors: {
     rejected: 'The request was rejected on your phone.',
     expired: 'The request expired before it was approved. Start again.',
@@ -200,6 +203,11 @@ const isAbort = (err: unknown) => (err as { name?: string })?.name === 'AbortErr
 
 function mergeTexts(texts?: ApprovalOptions['texts']): ApprovalTexts {
   return { ...DEFAULT_APPROVAL_TEXTS, ...(texts ?? {}), errors: { ...DEFAULT_APPROVAL_TEXTS.errors, ...(texts?.errors ?? {}) } } as ApprovalTexts;
+}
+
+/** The line under the dialog as shown: `securedBy`, or the default when it leaves out TouchQue. It is always there. */
+export function approvalAttribution(texts: ApprovalTexts = DEFAULT_APPROVAL_TEXTS): string {
+  return typeof texts.securedBy === 'string' && texts.securedBy.includes('TouchQue') ? texts.securedBy : DEFAULT_APPROVAL_TEXTS.securedBy;
 }
 
 /** The message for a refusal step (`rejected`, `blocked` + `reason`, …). */
@@ -486,7 +494,9 @@ export class ApprovalController {
   private set(patch: Partial<ApprovalState>): void {
     this.state = { ...this.state, ...patch };
     for (const listener of [...this.listeners]) {
-      try { listener(this.state); } catch (err) { console.error('[TouchQue] approval listener failed:', err); }
+      // The page's own listener failed: its error is the page's, reported like any other
+      // uncaught error (window.onerror), without stopping the other listeners.
+      try { listener(this.state); } catch (err) { queueMicrotask(() => { throw err; }); }
     }
   }
 }

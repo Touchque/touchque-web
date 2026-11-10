@@ -135,6 +135,155 @@ describe('browserKey.proof', () => {
   });
 });
 
+describe('browserKey.proof hints (unsigned User-Agent Client Hints)', () => {
+  const highEntropy = {
+    brands: [{ brand: 'Chromium', version: '130' }],
+    mobile: false,
+    platform: 'macOS',
+    platformVersion: '14.5.0',
+    fullVersionList: [
+      { brand: 'Chromium', version: '130.0.6723.92' },
+      { brand: 'Google Chrome', version: '130.0.6723.92' },
+      { brand: 'Not?A_Brand', version: '99.0.0.0' },
+    ],
+    model: '',
+  };
+  const uaData = (values: unknown = highEntropy) => ({ getHighEntropyValues: vi.fn(async (_hints: string[]) => values) });
+  const keyWith = (userAgentData?: { getHighEntropyValues(h: string[]): Promise<unknown> } | null) =>
+    createBrowserKey({ store: memoryStore(), crypto: webcrypto as unknown as Crypto, origin: ORIGIN, userAgentData });
+
+  test('carries platform, platformVersion, fullVersionList, mobile and model when userAgentData exists', async () => {
+    const uad = uaData();
+    const p = decode((await keyWith(uad).proof())!);
+    expect(uad.getHighEntropyValues).toHaveBeenCalledWith(['platformVersion', 'fullVersionList', 'model']);
+    expect(Object.keys(p)).toEqual(['v', 'jwk', 'aud', 'iat', 'nonce', 'sig', 'hints']);
+    expect(p.hints).toEqual({
+      platform: 'macOS',
+      platformVersion: '14.5.0',
+      fullVersionList: [
+        { brand: 'Chromium', version: '130.0.6723.92' },
+        { brand: 'Google Chrome', version: '130.0.6723.92' },
+        { brand: 'Not?A_Brand', version: '99.0.0.0' },
+      ],
+      mobile: false,
+      model: '',
+    });
+  });
+
+  test('reduced: at most 8 brands, strings trimmed to 64 characters, only the known members', async () => {
+    const long = 'x'.repeat(100);
+    const uad = uaData({
+      platform: `  ${long}  `, platformVersion: ' 15 ', mobile: true, model: 'Pixel 8', architecture: 'arm', wow64: false,
+      fullVersionList: Array.from({ length: 12 }, (_, i) => ({ brand: i === 0 ? long : `B${i}`, version: `${i}.0`, extra: 1 })),
+    });
+    const h = decode((await keyWith(uad).proof())!).hints!;
+    expect(Object.keys(h)).toEqual(['platform', 'platformVersion', 'fullVersionList', 'mobile', 'model']);
+    expect(h.platform).toBe(long.slice(0, 64));
+    expect(h.platformVersion).toBe('15');
+    expect(h.mobile).toBe(true);
+    expect(h.model).toBe('Pixel 8');
+    expect(h.fullVersionList).toHaveLength(8);
+    expect(h.fullVersionList[0]).toEqual({ brand: long.slice(0, 64), version: '0.0' });
+    expect(Object.keys(h.fullVersionList[1])).toEqual(['brand', 'version']);
+  });
+
+  test('read once per page load: later proofs reuse the cached hints', async () => {
+    const uad = uaData();
+    const key = keyWith(uad);
+    const [a, b] = [decode((await key.proof())!), decode((await key.proof())!)];
+    expect(uad.getHighEntropyValues).toHaveBeenCalledTimes(1);
+    expect(a.hints).toEqual(b.hints);
+    expect(a.nonce).not.toBe(b.nonce);
+  });
+
+  test('omitted without navigator.userAgentData (Firefox, Safari) and when anything throws', async () => {
+    // jsdom has no userAgentData, like Firefox and Safari.
+    expect((navigator as unknown as { userAgentData?: unknown }).userAgentData).toBeUndefined();
+    const plain = decode((await nodeKey().proof())!);
+    expect(Object.keys(plain)).toEqual(['v', 'jwk', 'aud', 'iat', 'nonce', 'sig']);
+    expect('hints' in plain).toBe(false);
+
+    for (const uad of [
+      null,
+      {} as never,
+      { getHighEntropyValues: () => Promise.reject(new Error('NotAllowedError')) },
+      { getHighEntropyValues: () => { throw new Error('boom'); } },
+      uaData(null),
+      uaData('nope'),
+    ]) {
+      const header = (await keyWith(uad).proof())!;
+      expect(header).not.toBeNull(); // the proof itself still comes out
+      const p = decode(header);
+      expect('hints' in p).toBe(false);
+      expect(verifies(p)).toBe(true);
+    }
+  });
+
+  test('reads navigator.userAgentData by default', async () => {
+    const uad = uaData();
+    Object.defineProperty(navigator, 'userAgentData', { value: uad, configurable: true });
+    try {
+      const p = decode((await nodeKey().proof())!);
+      expect(p.hints?.platform).toBe('macOS');
+      expect(uad.getHighEntropyValues).toHaveBeenCalledTimes(1);
+    } finally {
+      delete (navigator as unknown as { userAgentData?: unknown }).userAgentData;
+    }
+  });
+
+  test('a read slower than 300 ms is skipped, not waited for; the proof is not held up', async () => {
+    let release!: (v: unknown) => void;
+    const slow = { getHighEntropyValues: vi.fn(() => new Promise<unknown>((resolve) => { release = resolve; })) };
+    const key = keyWith(slow);
+    const started = Date.now();
+    const first = decode((await key.proof())!);
+    expect(Date.now() - started).toBeLessThan(1500);
+    expect('hints' in first).toBe(false);
+    expect(verifies(first)).toBe(true);
+    // Once the browser answers, the next proof carries the hints; the read is not repeated.
+    release(highEntropy);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(decode((await key.proof())!).hints?.platform).toBe('macOS');
+    expect(slow.getHighEntropyValues).toHaveBeenCalledTimes(1);
+  });
+
+  test('the signature and message do not change: hints are not signed', async () => {
+    const now = () => 1792310400_000;
+    const withHints = decode((await createBrowserKey({
+      store: memoryStore(), crypto: webcrypto as unknown as Crypto, origin: ORIGIN, now, userAgentData: uaData(),
+    }).proof())!);
+    expect(withHints.hints).toBeDefined();
+    // The signed message is exactly the v1 contract, with no trace of the hints.
+    expect(browserProofMessage(withHints.aud, withHints.iat, withHints.nonce))
+      .toBe(`touchque-browser:v1\n${ORIGIN}\n1792310400\n${withHints.nonce}`);
+    expect(Buffer.from(withHints.sig, 'base64url')).toHaveLength(64);
+    expect(verifies(withHints)).toBe(true);
+    // Changing, adding or dropping hints cannot break the signature (and so proves nothing).
+    const { hints: _dropped, ...unsigned } = withHints;
+    expect(verifies(unsigned as BrowserProof)).toBe(true);
+    expect(verifies({ ...withHints, hints: { ...withHints.hints!, platform: 'Windows' } })).toBe(true);
+    // The proof with and without hints has the same required members.
+    const without = decode((await createBrowserKey({
+      store: memoryStore(), crypto: webcrypto as unknown as Crypto, origin: ORIGIN, now, userAgentData: null,
+    }).proof())!);
+    expect(Object.keys(without)).toEqual(Object.keys(unsigned));
+    expect(without.v).toBe(withHints.v);
+  });
+
+  test('hints that would push the header past 2048 characters are dropped, the proof stays valid', async () => {
+    const long = 'y'.repeat(64);
+    const huge = uaData({
+      platform: long, platformVersion: long, model: long, mobile: false,
+      fullVersionList: Array.from({ length: 8 }, () => ({ brand: long, version: long })),
+    });
+    const header = (await keyWith(huge).proof())!;
+    expect(header.length).toBeLessThanOrEqual(2048);
+    const p = decode(header);
+    expect('hints' in p).toBe(false);
+    expect(verifies(p)).toBe(true);
+  });
+});
+
 describe('createTouchQueWeb({ browserKey })', () => {
   const json = (body: unknown, status: number) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   function server(responses: Response[]) {

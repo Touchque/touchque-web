@@ -23,7 +23,7 @@
 // Events (bubbling, composed): touchque-step { step }, touchque-approved,
 // touchque-error { error }, touchque-close.
 
-import { ApprovalController, approvalTimeLeft, isPngDataUrl } from './approval';
+import { ApprovalController, approvalAttribution, approvalTimeLeft, isPngDataUrl } from './approval';
 import type { ApprovalOptions, ApprovalState, ApprovalTexts } from './approval';
 import { formatOfflineCodeInput } from './offline';
 import { APPROVAL_STYLES } from './approvalStyles';
@@ -295,6 +295,14 @@ function createElementClass(): CustomElementConstructor {
       // Escape: cancel through the controller, so the call ends too.
       this.dialog.addEventListener('cancel', (e) => { e.preventDefault(); this.controller?.close(); });
       root.append(style, this.dialog);
+      // config / options set before the element was defined (lazy loading)
+      // are own properties that hide the accessors: pass them through.
+      for (const prop of ['config', 'options'] as const) {
+        if (!Object.prototype.hasOwnProperty.call(this, prop)) continue;
+        const value = this[prop];
+        delete (this as Partial<Record<typeof prop, unknown>>)[prop];
+        (this as Record<typeof prop, unknown>)[prop] = value;
+      }
     }
 
     /** A full `@touchque/web` config; wins over the base-url / credentials attributes. */
@@ -377,6 +385,7 @@ function createElementClass(): CustomElementConstructor {
       const key = screenKey(state, c);
       if (!this.screen || this.screen.key !== key) {
         this.screen = buildScreen(state, c, this.titleId);
+        this.screen.root.append(el('p', 'tq-secured', approvalAttribution(c.texts)));
         this.dialog.replaceChildren(this.screen.root);
       }
       this.screen.update(state);

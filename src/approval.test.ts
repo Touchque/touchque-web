@@ -10,7 +10,7 @@ vi.mock('@simplewebauthn/browser', () => ({
   WebAuthnAbortService: { cancelCeremony: vi.fn(), createNewAbortSignal: vi.fn() },
 }));
 
-import { createApproval, defineTouchQueApproval, approvalTimeLeft, PasskeyDismissedError } from './index';
+import { createApproval, defineTouchQueApproval, approvalTimeLeft, approvalAttribution, DEFAULT_APPROVAL_TEXTS, PasskeyDismissedError } from './index';
 import type { ApprovalState, TouchQueApprovalElement } from './index';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
@@ -172,6 +172,13 @@ describe('ApprovalController', () => {
     expect(approval.getState().error?.code).toBe('network');
   });
 
+  test('"Secured by TouchQue" can be translated but not removed', () => {
+    expect(approvalAttribution()).toBe('Secured by TouchQue');
+    expect(approvalAttribution({ ...DEFAULT_APPROVAL_TEXTS, securedBy: 'Geschützt durch TouchQue' })).toBe('Geschützt durch TouchQue');
+    expect(approvalAttribution({ ...DEFAULT_APPROVAL_TEXTS, securedBy: 'Secured by Acme' })).toBe('Secured by TouchQue');
+    expect(approvalAttribution({ ...DEFAULT_APPROVAL_TEXTS, securedBy: '' })).toBe('Secured by TouchQue');
+  });
+
   test('approvalTimeLeft ignores past and implausible times', () => {
     const now = Date.parse('2026-10-20T10:00:00Z');
     expect(approvalTimeLeft('2026-10-20T10:01:05Z', now)).toBe('1:05');
@@ -202,12 +209,28 @@ describe('<touchque-approval>', () => {
     expect(dialog.textContent).toContain('Not approved');
     expect(dialog.textContent).toContain('The request expired before it was approved. Start again.');
     expect(dialog.querySelector('.tq-case code')?.textContent).toBe('Z9Z-9ZZ');
+    expect(dialog.querySelector('.tq-secured')?.textContent).toBe('Secured by TouchQue');
     expect(events).toContain('touchque-step');
     expect(events).toContain('touchque-error');
 
     (dialog.querySelector('.tq-btn') as HTMLButtonElement).click();
     expect(dialog.hasAttribute('open')).toBe(false);
     expect(events[events.length - 1]).toBe('touchque-close');
+    node.remove();
+  });
+
+  test('keeps config and options set before the element was defined', async () => {
+    const r = relay([json({ ok: true }, 200)]);
+    const node = document.createElement('touchque-approval-late') as TouchQueApprovalElement;
+    document.body.append(node);
+    const config = { baseUrl: '/tq', fetch: r.fetch };
+    node.config = config;
+    node.options = { pollIntervalMs: 1 };
+    defineTouchQueApproval('touchque-approval-late'); // upgrades the element on the page
+    expect(Object.prototype.hasOwnProperty.call(node, 'config')).toBe(false);
+    expect(node.config).toBe(config);
+    expect(node.options).toEqual({ pollIntervalMs: 1 });
+    expect((await node.fetch('/api/pay')).status).toBe(200);
     node.remove();
   });
 

@@ -2,11 +2,19 @@
 // keystroke timing dynamics), scoped strictly to a caller-supplied container
 // element — never `window` / `document`. No key or character is ever
 // captured, only inter-keystroke timing gaps.
+//
+// Only a mouse or a pen counts as the mouse: a phone's tap fires a mousemove
+// and a click too, and a jump between two taps is not a movement. Touches
+// are counted apart (`touches`), and a click from the keyboard (Enter or
+// Space on a button: `detail` 0) is not a click, so a phone or a keyboard
+// alone never reads as "clicked without moving the mouse".
 
 export interface BehavioralMetrics {
   mouseDistance: number;
   mouseJitter: number;
   clicks: number;
+  /** Touches on the container (a phone, a tablet, a touch screen). */
+  touches: number;
   keystrokes: number;
   keystrokeSpeedAvg: number;
 }
@@ -38,6 +46,8 @@ export function createBehavioralTracker(
   let distance = 0;
   let jitterCount = 0;
   let clickCount = 0;
+  let touchCount = 0;
+  let lastTouchAt = -Infinity;
   let lastPos = { x: 0, y: 0 };
   // Previous movement vector, used to detect direction reversals (see
   // handleMouseMove below). `null` until the first real step is seen.
@@ -46,7 +56,12 @@ export function createBehavioralTracker(
   let keyIntervals: number[] = [];
   let intervalHandle: ReturnType<typeof setInterval> | null = null;
 
+  // The mouse events a browser makes up after a tap (Chromium says so; others within a moment of the touch).
+  const fromTouch = (e: Event) => Boolean((e as MouseEvent & { sourceCapabilities?: { firesTouchEvents?: boolean } }).sourceCapabilities?.firesTouchEvents)
+    || Date.now() - lastTouchAt < 1000;
+
   function handleMouseMove(e: Event): void {
+    if (fromTouch(e)) return;
     const { clientX, clientY } = e as MouseEvent;
     if (lastPos.x !== 0 && lastPos.y !== 0) {
       const dx = clientX - lastPos.x;
@@ -77,8 +92,14 @@ export function createBehavioralTracker(
     lastPos = { x: clientX, y: clientY };
   }
 
-  function handleClick(): void {
+  function handleClick(e: Event): void {
+    if ((e as MouseEvent).detail === 0 || fromTouch(e)) return;
     clickCount += 1;
+  }
+
+  function handleTouch(): void {
+    touchCount += 1;
+    lastTouchAt = Date.now();
   }
 
   function handleKeyDown(): void {
@@ -100,6 +121,7 @@ export function createBehavioralTracker(
       mouseDistance: Math.floor(distance),
       mouseJitter: jitterCount,
       clicks: clickCount,
+      touches: touchCount,
       keystrokes: keyIntervals.length,
       keystrokeSpeedAvg: Math.floor(avgSpeed),
     };
@@ -110,6 +132,7 @@ export function createBehavioralTracker(
     running = true;
     containerEl.addEventListener('mousemove', handleMouseMove);
     containerEl.addEventListener('click', handleClick);
+    containerEl.addEventListener('touchstart', handleTouch, { passive: true });
     containerEl.addEventListener('keydown', handleKeyDown);
     intervalHandle = setInterval(() => {
       if (typeof opts.onSample === 'function') opts.onSample(getMetrics());
@@ -121,6 +144,7 @@ export function createBehavioralTracker(
     running = false;
     containerEl.removeEventListener('mousemove', handleMouseMove);
     containerEl.removeEventListener('click', handleClick);
+    containerEl.removeEventListener('touchstart', handleTouch);
     containerEl.removeEventListener('keydown', handleKeyDown);
     if (intervalHandle) clearInterval(intervalHandle);
     intervalHandle = null;
@@ -130,6 +154,8 @@ export function createBehavioralTracker(
     distance = 0;
     jitterCount = 0;
     clickCount = 0;
+    touchCount = 0;
+    lastTouchAt = -Infinity;
     keyIntervals = [];
     lastPos = { x: 0, y: 0 };
     prevDelta = null;

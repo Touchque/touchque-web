@@ -142,6 +142,95 @@ describe('touchqueFetch', () => {
     const res = await touchqueFetch('/x', {}, { fetch: s.fetch });
     expect(await res.json()).toEqual({ hello: 1 });
   });
+
+  /** Rejects when `p` has not settled within `ms`. */
+  const within = <T>(p: Promise<T>, ms = 500) => Promise.race([
+    p, new Promise<never>((_r, reject) => setTimeout(() => reject(new Error(`still pending after ${ms} ms`)), ms)),
+  ]);
+
+  test('a Request keeps its headers and body on every round', async () => {
+    const seen: Array<{ headers: Headers; body: string }> = [];
+    const responses = [
+      json({ touchque: { state: 'waiting', requestId: 'r1' }, token: 't1' }, 202),
+      json({ ok: true }, 200),
+    ];
+    // Like the real fetch: building the request reads the Request's body.
+    const f = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const req = new Request(input, init);
+      seen.push({ headers: req.headers, body: await req.text() });
+      return responses.shift()!;
+    });
+    const req = new Request('https://app.example.com/api/transfer', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer t' }, body: '{"amount":5}',
+    });
+    const res = await touchqueFetch(req, {}, { fetch: f as unknown as typeof fetch, pollIntervalMs: 1 });
+    expect(res.status).toBe(200);
+    expect(seen).toHaveLength(2);
+    for (const call of seen) {
+      expect(call.headers.get('content-type')).toBe('application/json');
+      expect(call.headers.get('authorization')).toBe('Bearer t');
+      expect(call.body).toBe('{"amount":5}');
+    }
+    expect(seen[1].headers.get('x-touchque-token')).toBe('t1');
+  });
+
+  test('a stream body is sent again on every round', async () => {
+    const bodies: string[] = [];
+    const responses = [
+      json({ touchque: { state: 'waiting', requestId: 'r1' }, token: 't1' }, 202),
+      json({ ok: true }, 200),
+    ];
+    const f = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(await new Response(init?.body).text());
+      return responses.shift()!;
+    });
+    const body = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{"amount":5}')); c.close(); } });
+    const res = await touchqueFetch('/api/transfer', { method: 'POST', body, duplex: 'half' } as RequestInit, {
+      fetch: f as unknown as typeof fetch, pollIntervalMs: 1,
+    });
+    expect(res.status).toBe(200);
+    expect(bodies).toEqual(['{"amount":5}', '{"amount":5}']);
+  });
+
+  test('init.signal stops the wait', async () => {
+    const s = server([json({ touchque: { state: 'waiting', requestId: 'r1' }, token: 't' }, 202)]);
+    const ac = new AbortController();
+    const p = touchqueFetch('/x', { signal: ac.signal }, { fetch: s.fetch, pollIntervalMs: 10_000, onStep: () => setTimeout(() => ac.abort(), 5) });
+    await expect(within(p)).rejects.toMatchObject({ name: 'AbortError' });
+    expect((s.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(1);
+  });
+
+  test('init.signal aborts the request in flight, next to options.signal', async () => {
+    const page = new AbortController();
+    const f = vi.fn((_input: RequestInfo | URL, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject(init.signal!.reason));
+    }));
+    const p = touchqueFetch('/x', { signal: page.signal }, { fetch: f as unknown as typeof fetch, signal: new AbortController().signal });
+    setTimeout(() => page.abort(), 5);
+    await expect(within(p)).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  test('a finished call leaves no listener on a reused signal', async () => {
+    const ac = new AbortController();
+    const added = vi.spyOn(ac.signal, 'addEventListener');
+    const removed = vi.spyOn(ac.signal, 'removeEventListener');
+    const s = server([json({ a: 1 }, 200), json({ a: 2 }, 200)]);
+    await touchqueFetch('/x', {}, { fetch: s.fetch, signal: ac.signal });
+    await touchqueFetch('/x', {}, { fetch: s.fetch, signal: ac.signal });
+    const listeners = (spy: typeof added) => spy.mock.calls.filter((c) => c[0] === 'abort').map((c) => c[1]);
+    expect(listeners(added)).toHaveLength(2);
+    expect(listeners(removed)).toEqual(listeners(added));
+  });
+
+  test("the route's own response is returned without reading its body (a stream)", async () => {
+    const stream = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('data: 1\n\n')); } }); // never ends
+    const s = server([new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } })]);
+    const res = await within(touchqueFetch('/events', {}, { fetch: s.fetch }));
+    expect(res.status).toBe(200);
+    const reader = res.body!.getReader();
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe('data: 1\n\n');
+    await reader.cancel();
+  });
 });
 
 describe('classic2fa.login — two-phase', () => {

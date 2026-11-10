@@ -140,6 +140,7 @@ export interface TouchQueFetchOptions {
 
 import { attachBehavioral, type BehavioralHandle } from './behavioral';
 import { BROWSER_PROOF_HEADER } from './browserKey';
+import { logWarn, errorText } from './log';
 
 const TERMINAL: StepState[] = ['approved', 'rejected', 'expired', 'blocked', 'frozen', 'rate_limited'];
 
@@ -168,7 +169,25 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
     submitCode(value, type = 'qr') { code = { value, type }; wake?.(); },
     cancel() { cancelled = true; wake?.(); },
   };
-  options.signal?.addEventListener('abort', () => controls.cancel(), { once: true });
+
+  // A Request goes out as a fresh copy each round (a body is read once), with
+  // its own headers under init's.
+  const request = typeof Request !== 'undefined' && input instanceof Request ? input : undefined;
+  // options.signal and the caller's own (init.signal, or the Request's) both
+  // end the wait and abort the request in flight.
+  const signals = [options.signal, init.signal === undefined ? request?.signal : init.signal]
+    .filter((s): s is AbortSignal => !!s);
+  const linked = signals.length > 1 ? new AbortController() : undefined;
+  // The request follows them all (a Request's copy already follows its own).
+  const signal = linked ? linked.signal : options.signal ?? init.signal;
+  const onAbort = () => {
+    linked?.abort(signals.find((s) => s.aborted)?.reason);
+    controls.cancel();
+  };
+  for (const s of signals) {
+    if (s.aborted) onAbort();
+    else s.addEventListener('abort', onAbort, { once: true });
+  }
 
   const sleep = (ms: number | null) => new Promise<void>((resolve) => {
     const t = ms === null ? undefined : setTimeout(() => { wake = undefined; resolve(); }, ms);
@@ -176,9 +195,14 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
   });
 
   try {
+    // A stream body can be read once and the request may go out again: send its bytes.
+    if (typeof ReadableStream !== 'undefined' && init.body instanceof ReadableStream) {
+      init = { ...init, body: await new Response(init.body).arrayBuffer() };
+    }
     for (;;) {
       if (cancelled) throw abortError();
-      const headers = new Headers(init.headers);
+      const headers = new Headers(request?.headers);
+      new Headers(init.headers).forEach((value, name) => headers.set(name, value));
       if (token) headers.set('X-TouchQue-Token', token);
       if (offline) headers.set('X-TouchQue-Offline', '1');
       if (code) {
@@ -195,8 +219,10 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
         if (typeof proof === 'string' && proof) headers.set(BROWSER_PROOF_HEADER, proof);
       }
 
-      const res = await doFetch(input, { ...init, headers, signal: options.signal });
-      const body = await res.clone().json().catch(() => null);
+      const res = await doFetch(request ? request.clone() : input, { ...init, headers, signal });
+      // Only a 202 or a refusal carries a step: your route's own response is
+      // returned unread, so a stream or a download is never held up.
+      const body = res.status === 202 || !res.ok ? await res.clone().json().catch(() => null) : null;
       const step: Step | undefined = body && typeof body === 'object' && body.touchque && typeof body.touchque.state === 'string' ? body.touchque : undefined;
       if (step?.canary?.url && !canariesSent.has(step.canary.url)) {
         canariesSent.add(step.canary.url);
@@ -215,7 +241,7 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
             collectDeviceFingerprint: options.telemetry.collectDeviceFingerprint, fetch: options.fetch,
           });
         } catch (err) {
-          console.warn('[TouchQue] behavioural telemetry not started:', err instanceof Error ? err.message : err);
+          logWarn(`[TouchQue] behavioural telemetry not started: ${errorText(err)}`);
         }
       }
       // While the QR is on screen the loop keeps checking (so a phone-side reject ends the attempt at once).
@@ -245,5 +271,7 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
     }
   } finally {
     tracker?.stop();
+    // A long-lived signal must not keep a finished call alive.
+    for (const s of signals) s.removeEventListener('abort', onAbort);
   }
 }

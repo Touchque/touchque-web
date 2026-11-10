@@ -3,7 +3,7 @@ import { touchqueFetch, TouchQueFetchOptions } from './action';
 import {
   PasskeyDisabledError,
   PasskeyNotRegisteredError,
-  TouchQueWebAPIError,
+  webApiError,
 } from './errors';
 
 /**
@@ -83,20 +83,22 @@ export class RelayHttp {
           : undefined;
 
       // Map to a specific fallback error only on an exact error-code match,
-      // or on the bare status ONLY when the relay sent no error code at all.
-      // (A generic 403 from a WAF / rate-limiter / CSRF check must not be
-      // mistaken for "passwordless disabled" and trigger a password fallback.)
-      if (errCode === 'no_passkey_registered' || (res.status === 404 && !errCode)) {
+      // or on the bare status ONLY when the relay sent no body at all.
+      // (A generic 403 or 404 from a WAF / rate-limiter / CSRF check / router,
+      // HTML or JSON, must not be mistaken for "passwordless disabled" and
+      // trigger a password fallback.)
+      const bare = !text;
+      if (errCode === 'no_passkey_registered' || (res.status === 404 && bare)) {
         throw new PasskeyNotRegisteredError();
       }
-      if (errCode === 'passwordless_login_disabled' || (res.status === 403 && !errCode)) {
+      if (errCode === 'passwordless_login_disabled' || (res.status === 403 && bare)) {
         throw new PasskeyDisabledError();
       }
       const message =
         parsed && typeof parsed === 'object' && 'message' in parsed
           ? String((parsed as Record<string, unknown>).message)
           : errCode;
-      throw new TouchQueWebAPIError(res.status, parsed, message);
+      throw webApiError(res.status, parsed, message);
     }
 
     return parsed as T;

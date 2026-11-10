@@ -132,5 +132,6 @@ export const APPROVAL_STYLES = `
 .tq-approval .tq-case code, .tq-approval .tq-codes code { font: 600 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--_fg); }
 .tq-approval .tq-codes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; margin: 8px 0 0; padding: 0; list-style: none; text-align: left; }
 .tq-approval .tq-small { margin: 12px 0 0; font-size: 13px; color: var(--_muted); text-align: left; }
+.tq-approval .tq-secured { margin: 18px 0 0; font-size: 11px; color: var(--_muted); text-align: center; }
 .tq-approval .tq-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 `;

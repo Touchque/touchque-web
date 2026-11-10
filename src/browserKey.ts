@@ -7,6 +7,11 @@
 // is fresh: it signs `touchque-browser:v1\n{aud}\n{iat}\n{nonce}` with a new
 // random nonce, and the server accepts each nonce once.
 //
+// A proof may also carry `hints`: the browser's User-Agent Client Hints (OS
+// version, browser version, model) where the browser has them (Chromium). They
+// are a hint the server reads for device trust, never a proof: they are NOT
+// part of the signed message, so anything on the page could have set them.
+//
 // Your server passes the proof (`X-TouchQue-Browser`) to TouchQue untouched:
 // with the push (`login.request`), so the user's approval makes this browser
 // known, and to `risk.check` (the server SDKs' `silentSignIn` option), so a
@@ -31,6 +36,27 @@ export interface BrowserKeyJwk {
   y: string;
 }
 
+/**
+ * What the browser says about itself (User-Agent Client Hints, reduced), for device trust.
+ * Present only where `navigator.userAgentData` exists (Chromium; not Firefox or Safari).
+ * Strings are trimmed to 64 characters, `fullVersionList` holds at most 8 brands.
+ */
+export interface BrowserHints {
+  /** e.g. `macOS`, `Windows`, `Android`. */
+  platform: string;
+  /** e.g. `14.5.0`; empty when the browser did not say. */
+  platformVersion: string;
+  fullVersionList: Array<{ brand: string; version: string }>;
+  mobile: boolean;
+  /** Device model (Android only), e.g. `Pixel 8`; empty otherwise. */
+  model: string;
+}
+
+/** The part of `navigator.userAgentData` this file uses. */
+export interface UserAgentDataLike {
+  getHighEntropyValues(hints: string[]): Promise<unknown>;
+}
+
 /** What `X-TouchQue-Browser` carries, as base64url(JSON.stringify(proof)). */
 export interface BrowserProof {
   v: 1;
@@ -42,6 +68,24 @@ export interface BrowserProof {
   /** base64url of 16 random bytes (22 characters). */
   nonce: string;
   /** base64url of the 64-byte IEEE P1363 r||s ECDSA signature over `browserProofMessage(aud, iat, nonce)`. */
+  sig: string;
+  /**
+   * A hint the server reads for device trust, never a proof: it is NOT signed (the signature covers only
+   * `browserProofMessage(aud, iat, nonce)`), so it can be dropped or forged by script on the page. Omitted
+   * when the browser has no `navigator.userAgentData` or reading it failed.
+   */
+  hints?: BrowserHints;
+}
+
+/** A device-risk report's seal (see `BrowserKey.sealDevice`). */
+export interface DeviceSeal {
+  jwk: BrowserKeyJwk;
+  aud: string;
+  /** Unix seconds. */
+  iat: number;
+  /** base64url of 16 random bytes. */
+  nonce: string;
+  /** base64url of the 64-byte r||s ECDSA signature over `deviceSealMessage(aud, iat, nonce, digest)`. */
   sig: string;
 }
 
@@ -74,6 +118,10 @@ export interface BrowserKeyOptions {
    * resolve `null`, so a stuck IndexedDB never holds up a sign-in. Default 2000 ms.
    */
   timeoutMs?: number;
+  /**
+   * Where the `hints` come from. Default: `navigator.userAgentData`. Pass `null` to send no hints.
+   */
+  userAgentData?: UserAgentDataLike | null;
 }
 
 export interface BrowserKey {
@@ -81,6 +129,7 @@ export interface BrowserKey {
    * A fresh proof of this browser's key, base64url JSON for the
    * `X-TouchQue-Browser` header. Makes the key on first use. Resolves `null`
    * (never throws) when WebCrypto or IndexedDB is unavailable or too slow.
+   * Carries unsigned `hints` (see `BrowserHints`) when the browser has them.
    */
   proof(): Promise<string | null>;
   /**
@@ -89,6 +138,15 @@ export interface BrowserKey {
    * browser has no key yet. Never makes a key and never throws.
    */
   thumbprint(): Promise<string | null>;
+  /**
+   * Seals a device-risk report (`deviceRisk.collect`): signs
+   * `deviceSealMessage(aud, iat, nonce, digest)` with this browser's key, so the
+   * server can tell the report came whole from a browser holding the key, and
+   * accept it once. A different message from the proof's, so a seal can never
+   * stand in for a proof. Resolves `null` (never throws) without WebCrypto or
+   * IndexedDB. Optional: a custom `BrowserKey` may leave it out.
+   */
+  sealDevice?(digest: string): Promise<DeviceSeal | null>;
   /**
    * Deletes this browser's key: the next proof uses a new key, so TouchQue
    * treats it as a new browser. Use it on shared computers or when the user
@@ -100,6 +158,11 @@ export interface BrowserKey {
 /** The exact UTF-8 message the browser key signs. */
 export function browserProofMessage(aud: string, iat: number, nonce: string): string {
   return `touchque-browser:v1\n${aud}\n${iat}\n${nonce}`;
+}
+
+/** The exact UTF-8 message a device-risk seal signs; `digest` is base64url(SHA-256(report body)). */
+export function deviceSealMessage(aud: string, iat: number, nonce: string, digest: string): string {
+  return `touchque-device:v1\n${aud}\n${iat}\n${nonce}\n${digest}`;
 }
 
 /** RFC 7638 thumbprint input for an EC key: the required members in lexicographic order, no whitespace. */
@@ -193,6 +256,47 @@ function within<T>(work: () => Promise<T | null>, ms: number): Promise<T | null>
   });
 }
 
+const HINTS_TIMEOUT_MS = 300;
+const HINT_MAX_BRANDS = 8;
+const HINT_MAX_CHARS = 64;
+/** The server refuses an `X-TouchQue-Browser` value longer than this; hints are dropped before a proof grows past it. */
+const MAX_HEADER_CHARS = 2048;
+
+const hintString = (v: unknown): string => (typeof v === 'string' ? v.trim().slice(0, HINT_MAX_CHARS) : '');
+
+/** Reduces `getHighEntropyValues` output to `BrowserHints`; `null` when it is not an object. */
+function reduceHints(values: unknown, mobileFallback: unknown): BrowserHints | null {
+  if (!values || typeof values !== 'object') return null;
+  const v = values as Record<string, unknown>;
+  const list = Array.isArray(v.fullVersionList) ? v.fullVersionList : [];
+  const fullVersionList: BrowserHints['fullVersionList'] = [];
+  for (const entry of list) {
+    if (fullVersionList.length >= HINT_MAX_BRANDS) break;
+    const e = (entry && typeof entry === 'object' ? entry : {}) as Record<string, unknown>;
+    const brand = hintString(e.brand);
+    if (brand) fullVersionList.push({ brand, version: hintString(e.version) });
+  }
+  return {
+    platform: hintString(v.platform),
+    platformVersion: hintString(v.platformVersion),
+    fullVersionList,
+    mobile: (typeof v.mobile === 'boolean' ? v.mobile : mobileFallback) === true,
+    model: hintString(v.model),
+  };
+}
+
+/** `navigator.userAgentData`, or `null` (Firefox, Safari, no `navigator`, a throwing getter). */
+function defaultUserAgentData(): UserAgentDataLike | null {
+  try {
+    const uad = typeof navigator !== 'undefined'
+      ? (navigator as unknown as { userAgentData?: UserAgentDataLike }).userAgentData
+      : undefined;
+    return uad && typeof uad.getHighEntropyValues === 'function' ? uad : null;
+  } catch {
+    return null;
+  }
+}
+
 function defaultStore(): BrowserKeyStore | null {
   try {
     // Reading `indexedDB` itself throws in some sandboxed frames.
@@ -253,6 +357,24 @@ export function createBrowserKey(options: BrowserKeyOptions = {}): BrowserKey {
     return current;
   };
 
+  // The hints are read once per page load; a slow read is not repeated, a later proof() picks up its result.
+  let hintsMemo: Promise<BrowserHints | null> | undefined;
+  const hints = (): Promise<BrowserHints | null> => {
+    if (!hintsMemo) {
+      hintsMemo = (async () => {
+        try {
+          const uad = options.userAgentData !== undefined ? options.userAgentData : defaultUserAgentData();
+          if (!uad || typeof uad.getHighEntropyValues !== 'function') return null;
+          const values = await uad.getHighEntropyValues(['platformVersion', 'fullVersionList', 'model']);
+          return reduceHints(values, (uad as { mobile?: unknown }).mobile);
+        } catch {
+          return null;
+        }
+      })();
+    }
+    return hintsMemo;
+  };
+
   const timeoutMs = options.timeoutMs ?? 2000;
 
   return {
@@ -269,7 +391,28 @@ export function createBrowserKey(options: BrowserKeyOptions = {}): BrowserKey {
       ));
       if (sig.length !== 64) return null; // WebCrypto gives r||s; anything else would never verify
       const proof: BrowserProof = { v: 1, jwk, aud, iat, nonce, sig: base64url(sig) };
+      // Added after signing: a hint the server reads for device trust, never a proof.
+      const h = await within(hints, HINTS_TIMEOUT_MS);
+      if (h) {
+        const withHints = base64url(utf8(JSON.stringify({ ...proof, hints: h })));
+        if (withHints.length <= MAX_HEADER_CHARS) return withHints;
+      }
       return base64url(utf8(JSON.stringify(proof)));
+    }, timeoutMs),
+
+    sealDevice: (digest: string) => within(async () => {
+      const c = cryptoImpl();
+      const s = store();
+      const aud = audience();
+      if (!c || !s || !aud || !/^[A-Za-z0-9_-]{43}$/.test(digest)) return null;
+      const { pair, jwk } = await keys(c, s);
+      const iat = Math.floor((options.now ?? Date.now)() / 1000);
+      const nonce = base64url(c.getRandomValues(new Uint8Array(16)));
+      const sig = new Uint8Array(await c.subtle.sign(
+        { name: 'ECDSA', hash: 'SHA-256' }, pair.privateKey, utf8(deviceSealMessage(aud, iat, nonce, digest)),
+      ));
+      if (sig.length !== 64) return null;
+      return { jwk, aud, iat, nonce, sig: base64url(sig) };
     }, timeoutMs),
 
     thumbprint: () => within(async () => {

@@ -40,3 +40,16 @@ test('TouchQueWebAPIError carries the case code of a refusal (step first, then b
   expect(new TouchQueWebAPIError(403, { error: 'blocked', caseCode: 'REF-USE' }).caseCode).toBe('REF-USE');
   expect(new TouchQueWebAPIError(500, { error: 'x' }).caseCode).toBeUndefined();
 });
+
+describe('feature errors', () => {
+  test('webApiError types the three feature refusals and keeps TouchQueWebAPIError for the rest', async () => {
+    const { webApiError, TouchQueWebFeatureError } = await import('./errors');
+    const e = webApiError(403, { error: 'feature_not_in_plan', feature: 'mobile_sdk' }, 'This feature is not part of your organization’s plan.');
+    expect(e).toBeInstanceOf(TouchQueWebFeatureError);
+    expect(e).toBeInstanceOf(TouchQueWebAPIError);
+    expect(e).toMatchObject({ status: 403, feature: 'mobile_sdk', reason: 'not_in_plan' });
+    expect(webApiError(403, { error: 'feature_read_only' })).toMatchObject({ reason: 'read_only' });
+    expect(webApiError(403, { error: 'feature_off', feature: 'ciam' })).toMatchObject({ reason: 'off', feature: 'ciam' });
+    expect(webApiError(403, { error: 'forbidden' })).not.toBeInstanceOf(TouchQueWebFeatureError);
+  });
+});

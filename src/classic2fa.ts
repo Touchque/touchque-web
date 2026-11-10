@@ -7,7 +7,7 @@
 // used to hand-roll on their own dashboard page.
 
 import type { RelayHttp } from './http';
-import { EnrollmentTimeoutError, EnrollmentCancelledError, PasskeyRequiredError, TouchQueWebAPIError } from './errors';
+import { EnrollmentTimeoutError, EnrollmentCancelledError, PasskeyRequiredError, webApiError } from './errors';
 import type { Step, StepControls, TouchQueFetchOptions } from './action';
 
 export interface ClassicTwoFactorPaths {
@@ -124,7 +124,7 @@ export class ClassicTwoFactor {
     const step = body?.touchque as Step | undefined;
     if (step?.state === 'passkey_required' && step.requestId) throw new PasskeyRequiredError(step.requestId);
     if (res.status === 409 && body?.error === 'PASSKEY_REQUIRED' && body.requestId) throw new PasskeyRequiredError(body.requestId); // servers before @touchque/node 2
-    throw new TouchQueWebAPIError(res.status, body, step?.reason || step?.state || body?.error || 'login_failed');
+    throw webApiError(res.status, body, step?.reason || step?.state || body?.error || 'login_failed');
   }
 
   /** @internal set by createTouchQueWeb so passkey-only policies just work. */

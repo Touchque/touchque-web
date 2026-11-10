@@ -44,9 +44,9 @@ export class PasskeyAlreadyRegisteredError extends TouchQueWebError {
 }
 
 /**
- * The account has no passkey registered. The relay backend returned 404 (or
- * `error: "no_passkey_registered"`). The caller should fall back to another
- * sign-in method (e.g. password).
+ * The account has no passkey registered. The relay backend returned
+ * `error: "no_passkey_registered"` (or a 404 with no body). The caller
+ * should fall back to another sign-in method (e.g. password).
  */
 export class PasskeyNotRegisteredError extends TouchQueWebError {
   constructor(message = 'No passkey is registered for this account.') {
@@ -57,7 +57,7 @@ export class PasskeyNotRegisteredError extends TouchQueWebError {
 
 /**
  * Passwordless sign-in is not enabled for this tenant/integration. The relay
- * backend returned 403 (or `error: "passwordless_login_disabled"`).
+ * backend returned `error: "passwordless_login_disabled"` (or a 403 with no body).
  */
 export class PasskeyDisabledError extends TouchQueWebError {
   constructor(message = 'Passwordless sign-in is not enabled for this account.') {
@@ -111,6 +111,42 @@ export class TouchQueWebAPIError extends TouchQueWebError {
     const code = b.touchque && typeof b.touchque.caseCode === 'string' ? b.touchque.caseCode : b.caseCode;
     this.caseCode = typeof code === 'string' && code ? code : undefined;
   }
+}
+
+/**
+ * TouchQue refused because the organization behind the site cannot use this
+ * feature (HTTP 403, passed on by your server). `reason`:
+ * - `not_in_plan` — not in its plan (`feature_not_in_plan`);
+ * - `read_only` — being turned off (`feature_read_only`): reads work, changes are refused;
+ * - `off` — switched off on this TouchQue deployment (`feature_off`).
+ * `feature` is the catalog id (`device_risk`, `mobile_sdk`, `ciam`…). A
+ * TouchQueWebAPIError, so existing `catch` blocks still see it; show the person
+ * that this part of the sign-in is not available, not a retry.
+ */
+export class TouchQueWebFeatureError extends TouchQueWebAPIError {
+  public readonly feature: string | undefined;
+  public readonly reason: 'not_in_plan' | 'read_only' | 'off';
+
+  constructor(status: number, body: unknown, reason: 'not_in_plan' | 'read_only' | 'off', message?: string) {
+    super(status, body, message);
+    this.name = 'TouchQueWebFeatureError';
+    const f = body && typeof body === 'object' ? (body as { feature?: unknown }).feature : undefined;
+    this.feature = typeof f === 'string' ? f : undefined;
+    this.reason = reason;
+  }
+}
+
+const FEATURE_REASONS: Record<string, 'not_in_plan' | 'read_only' | 'off'> = {
+  feature_not_in_plan: 'not_in_plan',
+  feature_read_only: 'read_only',
+  feature_off: 'off',
+};
+
+/** The error for a failed answer: TouchQueWebFeatureError for the three feature codes, else TouchQueWebAPIError. */
+export function webApiError(status: number, body: unknown, message?: string): TouchQueWebAPIError {
+  const code = body && typeof body === 'object' ? (body as { error?: unknown }).error : undefined;
+  const reason = typeof code === 'string' ? FEATURE_REASONS[code] : undefined;
+  return reason ? new TouchQueWebFeatureError(status, body, reason, message) : new TouchQueWebAPIError(status, body, message);
 }
 
 /**

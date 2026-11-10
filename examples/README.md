@@ -9,7 +9,7 @@ A single Node process that:
 ## Run
 
 ```bash
-# from sdks/touchque-web
+# from the repository root
 npm run build
 
 # point it at a running authenticator backend (default http://localhost:5001)
@@ -49,7 +49,7 @@ Without a workspace or a phone, point it at the SDK's fake API and use the page'
 demo user, approve, reject, ask for a passkey):
 
 ```bash
-PORT=5208 node ../../../testing/fake-touchque-api.mjs
+PORT=5208 node ../../testing/fake-touchque-api.mjs
 TQ_API_BASE_URL=http://127.0.0.1:5208 TQ_API_KEY=tq_test_key TQ_API_SECRET=test_secret node server.mjs
 ```
 

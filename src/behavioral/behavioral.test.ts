@@ -22,7 +22,7 @@ describe('createBehavioralTracker', () => {
     const t = createBehavioralTracker(container);
     const m = t.getMetrics();
     expect(Object.keys(m).sort()).toEqual(
-      ['clicks', 'keystrokeSpeedAvg', 'keystrokes', 'mouseDistance', 'mouseJitter'].sort(),
+      ['clicks', 'keystrokeSpeedAvg', 'keystrokes', 'mouseDistance', 'mouseJitter', 'touches'].sort(),
     );
     for (const v of Object.values(m)) expect(typeof v).toBe('number');
   });
@@ -35,10 +35,25 @@ describe('createBehavioralTracker', () => {
     move(container, 1, 1);
     move(container, 4, 5); // dx=3, dy=4 -> distance += 5
     move(container, 4, 5); // no movement -> +0
-    container.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    container.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
     const m = t.getMetrics();
     expect(m.mouseDistance).toBe(5);
     expect(m.clicks).toBe(1);
+    t.stop();
+  });
+
+  test('a phone\'s taps and the keyboard\'s Enter are not mouse clicks; touches are counted apart', () => {
+    const t = createBehavioralTracker(container);
+    t.start();
+    // Enter on a button: a click with detail 0.
+    container.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 0 }));
+    // A tap: touchstart, then the made-up mousemove and click (a jump, not a movement).
+    container.dispatchEvent(new Event('touchstart', { bubbles: true }));
+    move(container, 20, 600);
+    container.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+    container.dispatchEvent(new Event('touchstart', { bubbles: true }));
+    move(container, 300, 100);
+    expect(t.getMetrics()).toMatchObject({ clicks: 0, touches: 2, mouseDistance: 0 });
     t.stop();
   });
 
@@ -168,7 +183,7 @@ describe('attachBehavioral', () => {
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok_abc');
     const body = JSON.parse(init.body as string);
     expect(Object.keys(body).sort()).toEqual(
-      ['clicks', 'keystrokeSpeedAvg', 'keystrokes', 'mouseDistance', 'mouseJitter'].sort(),
+      ['clicks', 'keystrokeSpeedAvg', 'keystrokes', 'mouseDistance', 'mouseJitter', 'touches'].sort(),
     );
     h.stop();
   });
@@ -187,9 +202,8 @@ describe('attachBehavioral', () => {
     h.stop();
   });
 
-  test('includes deviceFingerprint only when collectDeviceFingerprint is true', async () => {
-    // jsdom has no canvas; make getContext return null so generateDeviceFingerprint
-    // takes its deterministic "no-canvas" branch instead of throwing.
+  test('carries the Device risk report only when collectDeviceFingerprint is true', async () => {
+    // jsdom has no canvas; make getContext return null so the report's canvas parts are null.
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null as never);
     // Newer Node's global localStorage shadows jsdom's and is unusable here.
     const store = new Map<string, string>();
@@ -213,11 +227,12 @@ describe('attachBehavioral', () => {
     });
     await withFp.submit();
     const sent = JSON.parse((fetchMock.mock.calls[0] as any)[1].body);
-    expect(sent).toHaveProperty('deviceFingerprint', 'no-canvas');
-    // v2 signals ride along: a stable id, a fingerprint and the coarse traits
-    expect(sent.deviceSignals.deviceId).toMatch(/^tq2_[0-9a-f]{32}$/);
-    expect(sent.deviceSignals.fingerprint).toMatch(/^tq2_fp_/);
-    expect(sent.deviceSignals.traits).toHaveProperty('timezone');
+    // The Device risk report rides along; the old fingerprints never do.
+    expect(sent.deviceRisk).toMatch(/^[A-Za-z0-9_-]+$/);
+    const report = JSON.parse(Buffer.from(sent.deviceRisk, 'base64url').toString('utf8'));
+    expect(JSON.parse(report.body)).toMatchObject({ v: 1, p: 'sign_in' });
+    expect(sent).not.toHaveProperty('deviceFingerprint');
+    expect(sent).not.toHaveProperty('deviceSignals');
     withFp.stop();
 
     const fetchMock2 = vi.fn(async () => ({ ok: true, status: 200, text: async () => '' }) as any);
@@ -229,8 +244,8 @@ describe('attachBehavioral', () => {
     });
     await noFp.submit();
     const sentWithout = JSON.parse((fetchMock2.mock.calls[0] as any)[1].body);
+    expect(sentWithout).not.toHaveProperty('deviceRisk');
     expect(sentWithout).not.toHaveProperty('deviceFingerprint');
-    expect(sentWithout).not.toHaveProperty('deviceSignals');
     noFp.stop();
   });
 });

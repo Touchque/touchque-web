@@ -3,6 +3,55 @@
 All notable changes to this project will be documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+## [1.6.0] — 2026-11-10
+
+### Added
+- **Behaviour widget: `touches`.** The tracker counts touches apart; a phone's taps (and the mouse events browsers make up after them) and Enter or Space on a button (a click with `detail` 0) are no longer mouse clicks or mouse movement, so a phone or a keyboard alone never reads as "clicked without moving the mouse".
+- **How the pointer and the fingers moved: `startPointerSummary()`** — counts only, computed in the browser, never a position or a path: presses with a mouse or pen on a pointer that jumped there (at most one move since the last press, from 30 px away or from nowhere) and how long the longest of them lasted, long strokes and how close to a ruler line they came (axis-aligned strokes left out), taps and the longest one, long swipes and how straight they were, moves seen. Press and tap times are left out on a coarse clock (Tor Browser). `encodePointerSummary()` packs it into 18 characters. The Device risk tag adds it to the form field on submit, after the requestId and a dot (`dre_…`.`1…`, 45 characters: inside the 64 every server SDK passes on), `TouchQueDevice.value()` returns the same for single-page apps, `data-pointer="off"` (or `pointer: false`) leaves it out; `startClientSignals` sends it as `pm`. TouchQue's risk engine weighs it as `device_pointer_synthetic`: only ever a step-up with the number, never a refusal, and no movement at all (a keyboard, a screen reader) is never a sign.
+- **Feature errors:** a refusal your server passes on for a feature the organization cannot use (403 `feature_not_in_plan`, `feature_read_only`, `feature_off`) throws `TouchQueWebFeatureError` (with `feature` and `reason`), still a `TouchQueWebAPIError`.
+- **Device risk as one line: the script tag `device.js`** (`dist/touchque-device.global.js`, no dependency, 8.7 KB gzipped) with `data-site-key` and `data-purpose`: identifies when the page loads and fills a hidden `touchque_request_id` field in every form (forms added later too; a form's `data-touchque-purpose` wins), takes a new identification after 10 minutes and after each submit, and sets `window.TouchQueDevice` (`ready`, `requestId`, `visitorId`, `refresh()`, `attach(root)`, `stop()`) and the `touchque:device` event for single-page apps. Each version's Subresource Integrity hash is in `dist/device-sri.json`. `installDeviceRiskTag(options)` is the same from npm. `deviceRisk.identify({ pageView: true })` (the tag's identifications) is counted when your server checks it, not per page view.
+- **Device risk: `deviceRisk.identify({ siteKey, purpose })`** for sign-in, sign-up, password-reset and approval pages (a paid add-on, off until the workspace turns it on): returns `{ visitorId, requestId, confidence }`, a visitor ID of your workspace that survives cleared storage, private windows where possible and browser updates; your server reads the trusted identification by `requestId`. `deviceRisk.collect({ purpose })` returns the report for a server relay instead. The report: coarse traits and short hashes (canvas, audio, fonts, Math, WebGL limits) plus findings (replaced browser functions and contradicting traits, a virtual machine, software graphics, a headless or automated browser, a private window where detectable, canvas noise, Brave), sealed with the browser key where there is one (`browserKey.sealDevice`, message `touchque-device:v1`, never usable as a browser proof). TouchQue keeps keyed hashes only. `DEVICE_RISK_FIELD`, `DEVICE_RISK_HEADER`, `createDeviceRisk`, `deviceSealMessage`. README: what to say in your privacy notice.
+- **"Secured by TouchQue" under the approval dialog.** `<touchque-approval>` ends every screen with a small line in the theme's muted colour. `texts.securedBy` translates it; a text without the name TouchQue shows the default (`approvalAttribution(texts)`).
+- **Agent trap.** `addAgentTrap(form)` adds a field off the screen, hidden from screen readers and the keyboard and skipped by password managers, with a note only software reading the page finds, asking it to type `AGENT_TRAP_WORD`. `startClientSignals` reports `trap: 1` when it holds that word, `2` when it holds something else (autofill; recorded, never counted), `0` when empty, absent on pages without one (`agentTrapState(values)` for your own markup). TouchQue refuses a sign-in whose trap holds the word, outside `monitor`.
+- **Held keys:** `startClientSignals` leaves auto-repeated keydowns (`event.repeat`) out of the typing rhythm, so holding Backspace is not machine-regular typing.
+- **`startClientSignals()`:** tells a person from software driving the browser (webdriver, automation traces, headless browsers, script-made input, inhuman timing). Send `probe.encode()` with your sign-in form; your server passes it to TouchQue as `clientSignals`. Booleans, counts and timings only. A field counts as filled by script only when its value changed after the page loaded and it is neither read-only nor disabled, so a value the page set itself is not a sign.
+- **My Account text-message codes:** `startSmsEnrollment(phone)`, `verifySmsEnrollment(code)`, `removeSmsCodes()`;
+  `smsCodes` in the authentication methods.
+- **TouchQue Login My Account API.** `HostedLoginClient.myAccount(scope?)` returns a `MyAccountClient` for the
+  signed-in person's own settings (profile, passkeys, TouchQue app, email codes, linked accounts, password,
+  email change, devices, apps, marketing consent, data export, deletion); its tokens come from
+  `getMyAccountToken(scope)`, which trades the refresh token (one refresh-token use at a time). A too-old
+  sign-in throws `MyAccountError` with `stepUp: true`: call `loginWithRedirect({ maxAge: 0 })`.
+  `accountUrl(section?)` links the hosted account page.
+- **TouchQue Login for single-page apps.** `HostedLoginClient` signs users in on your tenant's hosted pages with
+  PKCE: `loginWithRedirect()` (`screenHint: 'signup'`, `loginHint`, `connection`, `organization`, `appState`…),
+  `handleRedirectCallback()` (state and `iss` checks; ID token verified with WebCrypto against the JWKS),
+  `getAccessToken()` (refreshes once for parallel callers; refresh tokens rotate), `getUser()`, `isAuthenticated()`,
+  `logout({ returnTo })`. Tokens stay in memory unless `cacheLocation: 'localstorage'`.
+- **Unsigned `hints` on the browser key proof:** where the browser has `navigator.userAgentData` (Chromium), the
+  `X-TouchQue-Browser` proof also carries `{ platform, platformVersion, fullVersionList, mobile, model }`, read once
+  per page load (300 ms limit) and omitted otherwise. A hint for device trust, never a proof: the signature and
+  signed message are unchanged. New types `BrowserHints`, `UserAgentDataLike`.
+
+### Changed
+- **Silent by default.** The browser console stays clean: identify failures, a script tag without its site key and telemetry that did not start go to `setTouchQueLogger(logger)` (`console` while you integrate) or, for device.js, to the console when the tag has `data-debug`; otherwise nowhere. A page's own approval listener that throws is reported as the page's uncaught error, not printed by the SDK.
+- `attachBehavioral({ collectDeviceFingerprint: true })` sends the Device risk report (`deviceRisk`) with the telemetry instead of `deviceFingerprint` and `deviceSignals`; `collectDeviceSignals` and `generateDeviceFingerprint` are deprecated (TouchQue no longer reads them).
+
+### Fixed
+- **`touchqueFetch` with a `Request`** (also `tq.fetch`, `ApprovalController.fetch`, `<touchque-approval>.fetch`): the request kept only `init`'s headers, so a `Request`'s own `Content-Type` and `Authorization` were dropped, and the re-send after the 202 failed because the body had been read. Each round now sends a copy of the `Request` with its headers under `init`'s; a `ReadableStream` body in `init` is read once and its bytes are sent every round.
+- **`touchqueFetch` honours `init.signal`:** it was replaced by `options.signal` (or by nothing), so aborting it neither cancelled the request in flight nor stopped the polling, and the guarded action could still run after a later approval. `init.signal` (or the `Request`'s own) and `options.signal` now both cancel.
+- **`touchqueFetch` returns your route's response unread:** it read every response body to look for a step, so a guarded route that streams (server-sent events, NDJSON) never resolved and a download was held in memory. Only a 202 or an error response is read.
+- **`touchqueFetch` removes its abort listener when the call ends**, so one long-lived `AbortSignal` passed to many calls no longer keeps every finished call alive.
+- **`HostedLoginClient.getAccessToken()` keeps the session when a refresh fails offline or on a 5xx:** any failure signed the person out (and removed the `localstorage` session). Only `invalid_grant` ends it now, as in `getMyAccountToken()`.
+- **A 403 or 404 page from a CSRF check, a WAF or a wrong mount path is no longer a passkey error.** Relay calls turned any 403 or 404 without an `error` code into `PasskeyDisabledError` or `PasskeyNotRegisteredError`, so `passkeys.autofill()` resolved `null` and `authenticate()` said passwordless sign-in was off. The bare status counts only when the response has no body; anything else is a `TouchQueWebAPIError` with its status.
+- **`<touchque-approval>` keeps `config` and `options` set before `defineTouchQueApproval()` ran** (lazy loading): they were own properties that hid the element's accessors, so `fetch()` asked for a `base-url`.
+
+### Security
+- **Hosted login: an empty `iss` is refused too (RFC 9207).** `handleRedirectCallback` already refused a callback whose `iss` names another issuer; one with an empty `iss=` now throws `issuer_mismatch` as well, before the code is exchanged. A callback without `iss` (a server that does not send it yet) is still accepted.
+- **`HostedLoginClient` and `MyAccountClient` refuse a plaintext `http://` domain** other than `localhost`, `*.localhost`, `127.0.0.1` and `[::1]` (a `config` error): codes, PKCE verifiers and tokens would travel in the clear. The same rule as the server SDKs' API `baseUrl`.
+
 ## [1.5.0] — 2026-10-20 — "Why?" case codes, drop-in approval dialog, passkey autofill
 
 ### Added
@@ -202,7 +251,7 @@ format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   perfectly straight diagonal drag as high "jitter" on nearly every step
   while missing real micro-wobble entirely — a diagonal-moving bot script
   could read as more "human" than an actual human. The risk engine
-  (`touchque-ai-risk-engine`) treats `mouseJitter === 0` + long distance
+  treats `mouseJitter === 0` + long distance
   as bot-like linear movement and `mouseJitter > 5` as a human signal, so
   this metric needed to reflect real erraticism regardless of the
   movement's angle.

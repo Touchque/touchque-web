@@ -9,7 +9,7 @@ passkey ceremonies.
 [![npm version](https://img.shields.io/npm/v/@touchque/web.svg)](https://www.npmjs.com/package/@touchque/web)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-📘 Full docs: **[authenticator.touchque.com/docs](https://authenticator.touchque.com/docs)**
+📘 Full docs: **[support.touchque.com](https://support.touchque.com)**
 
 Framework-agnostic (plain DOM). If you're using React, see
 [`@touchque/react`](https://www.npmjs.com/package/@touchque/react) instead —
@@ -156,7 +156,7 @@ Android screen lock) are available, the user has not said "Not now" in this brow
 was made or used here. The marks are kept in `localStorage` under a hash of the user, never the id itself.
 `upgrade` registers through your relay's `/passkey/register/*` (`touchqueRouter` needs `getUserId`) and
 remembers it; a device that already holds one throws `PasskeyAlreadyRegisteredError`. The full migration
-guide is in the [docs](https://authenticator.touchque.com/docs/passkey-migration).
+guide is in the [docs](https://support.touchque.com/passkey-migration).
 
 ## Classic push 2FA (enroll + login)
 
@@ -237,6 +237,123 @@ risk signal, an everyday action), your server lets the user in at once. Anything
   mark "this browser" in an approved-browsers list (`null` before the first proof).
 - Without `createTouchQueWeb`: `touchqueFetch(url, init, { browserProof: browserKey.proof })`, or put
   `await browserKey.proof()` (`null` when unavailable) in the `X-TouchQue-Browser` header yourself.
+- Where the browser has `navigator.userAgentData` (Chromium), the proof also carries `hints`: the platform, its
+  version, the browser's full version list (at most 8 brands) and the device model, read once per page load
+  (given up on after 300 ms). They are a hint the server reads for device trust, never a proof: they are not
+  signed. Firefox and Safari send no `hints`.
+
+## Device risk (sign-in, sign-up, reset and approval pages)
+
+A paid add-on, off until your workspace turns it on (dashboard → Device risk). Every browser that reaches one of
+these pages gets a visitor ID of your workspace, like Fingerprint's `visitorId`, and the risk engine decides whether
+anything about it asks for more.
+
+### One line on the page, one on your server
+
+> **Not live yet:** `cdn.touchque.com` does not serve the tag yet. Until it does, install `@touchque/web` from npm
+> and call `installDeviceRiskTag({ siteKey, purpose })` (see below); it does the same as the tag.
+
+```html
+<script src="https://cdn.touchque.com/device/v1.6.0/device.js" data-site-key="tqpk_…" data-purpose="sign_in"
+        integrity="sha384-…" crossorigin="anonymous" async></script>
+```
+
+```typescript
+// Your server, when the form arrives (any server SDK has this line):
+const verdict = await tq.deviceRisk.check(req.body.touchque_request_id, { event: 'sign_in', externalUsername });
+if (verdict.stepUp) { /* ask for more: a number-matched approval, a passkey, your emailed code */ }
+```
+
+The dashboard's Device risk → Settings shows the tag with your site key and this version's `integrity` hash
+(`dist/device-sri.json` in the package; each version has its own path, so the hash never changes under you). The
+tag identifies the browser when the page loads and puts the requestId into a hidden `touchque_request_id` field of
+every form on the page, forms added later included. A form's own `data-touchque-purpose="sign_up"` wins over the
+tag's `data-purpose` (default `sign_in`). TouchQue accepts an identification for 15 minutes and for one account: the
+tag takes a new one after 10 minutes, and another after each submit, so a single-page app's next attempt is fresh.
+`data-api` points it at another TouchQue API host. Allow the script host in `script-src` and your API host in
+`connect-src` of your Content-Security-Policy.
+
+**How the pointer moved.** When a form is sent, the tag adds 18 characters after the requestId and a dot: how the
+pointer and the fingers moved on the page, as counts computed in the browser (`startPointerSummary`): presses on a
+pointer that jumped onto the button and how long they lasted, how close long strokes and swipes came to a ruler line,
+how long taps lasted. Never a position, a path or what was pressed. Software that drives a browser (Playwright,
+Puppeteer, Selenium, AI browser agents) jumps the pointer and presses for 0 to 3 ms; a hand takes 30 ms and more. Pass
+the field to `deviceRisk.check` as it is (45 characters, inside the 64 every server SDK passes on); the risk engine
+weighs it as `device_pointer_synthetic`, a number-matched step-up at most, never a refusal, in shadow until you
+enforce it. No movement at all (a keyboard, a screen reader) is never a sign; Voice Control and Switch Control move
+like software and get the step-up. `data-pointer="off"` on the tag leaves it out. Name it in your privacy notice with
+the rest: the numbers serve the sign-in's security, tell no person from another and are not kept apart from the
+verdict.
+
+Single-page apps read `window.TouchQueDevice`: `await TouchQueDevice.ready` (the first identification, or null),
+`TouchQueDevice.value()` (what to send now: the requestId and the pointer summary), `TouchQueDevice.requestId`,
+`TouchQueDevice.refresh()`, and the `touchque:device` event on `document` after each new identification. With npm
+instead of the tag: `installDeviceRiskTag({ siteKey, purpose })` does the same.
+
+**What a missing tag gets.** Nothing on the page is trusted. requestIds are made only by TouchQue's server, used
+for one account, bound to your site's origin and to 15 minutes; your server reads the verdict by requestId and the
+risk engine decides. A page without the tag, or with it blocked, sends no requestId: `deviceRisk.check` still
+answers (`report: 'missing'`, or `'unknown'` / `'expired'` for one that does not verify) with
+`device_identification_missing`. Ad blockers block such scripts for honest people too, so that signal only ever asks
+for a number-matched step-up, never refuses, and starts in shadow like the others. Removing or blocking the tag
+gets the visitor a step-up at most, never a way past a check.
+
+### From your own code
+
+```typescript
+import { deviceRisk } from '@touchque/web';
+
+// When the form is sent (purpose: 'sign_in' | 'sign_up' | 'password_reset' | 'approval'):
+const id = await deviceRisk.identify({ siteKey: 'tqpk_…', purpose: 'sign_up' });
+// id: { visitorId: 'tqv_…', requestId: 'dre_…', confidence: 0.99 }, or null when TouchQue could not be reached
+form.elements.deviceRiskRequestId.value = id?.requestId ?? '';
+```
+
+Never trust the page's copy: your server reads the identification by `requestId` with a server SDK
+(`tq.deviceRisk.getEvent(requestId)`: the visitor, how sure, what the page showed, the risk engine's verdict), checks
+it for an account on sign-up and password-reset pages (`tq.deviceRisk.check(requestId, { event: 'sign_up',
+externalUsername, clientIp })`), and passes it as `deviceRiskRequestId` to `login.request` and `risk.check` on
+sign-in and approval pages. An identification serves one account for 15 minutes; another account gets
+`device_report_replayed`.
+
+- **The visitor ID** (`tqv_…`) belongs to your workspace only: another TouchQue customer sees another one for the
+  same browser. It survives cleared site data, private windows where the browser lets its traits be seen, and browser
+  updates. `confidence`: 0.99 when the browser's device-bound key sealed the report, 0.95 its stored id, up to 0.9 a
+  match of its traits (lower for identical computers of a fleet), 0.5 to 0.6 a first sight.
+- **Site key and origins:** the site key (`tqpk_…`) is public; TouchQue answers only pages on your organization's
+  verified domains and their subdomains (Organization → Domains) and on the origins you list (Device risk →
+  Settings). The request is a
+  `text/plain` POST, so no CORS preflight; allow your TouchQue API host in your Content-Security-Policy `connect-src`.
+- **Relay instead:** `deviceRisk.collect({ purpose })` returns the encoded report for your server to pass as
+  `deviceRisk`, if your page must not call TouchQue itself.
+- **The behavioral widget:** `attachBehavioral({ collectDeviceFingerprint: true })` now sends this same report with the
+  telemetry; `collectDeviceSignals` and the v1 fingerprint are deprecated and TouchQue no longer reads them.
+- **What it reads:** coarse traits (OS, browser family and major version, time zone, languages, screen size,
+  CPU cores, memory class, touch points, the graphics card's name) and short hashes of how the browser draws a
+  test text, plays a test sound, which of 25 common fonts it has, a few Math results and its WebGL limits. And
+  findings: browser functions replaced by script, traits that contradict each other (an anti-detect browser or
+  a spoofing extension), a virtual machine or software graphics, a headless or automated browser, and a private
+  window where the browser lets that be seen.
+- **Sealed:** where the browser has a device-bound key (`browserKey`, the silent sign-in key), the report is
+  signed with it (`touchque-device:v1`, a different message from a proof's). TouchQue then knows it came whole
+  from a browser holding that key, from your page's origin, once. A seal does not make the traits true: script
+  on the page can lie to its own report, so TouchQue checks them against each other, against the address, and
+  against the devices it saw before.
+- **What TouchQue keeps:** no raw trait. Keyed hashes (HMAC with a key of your workspace alone, so a device is
+  never linked across TouchQue customers), coarse labels ("Chrome 130 · macOS · laptop"), the account, the
+  country and a keyed hash of the address's network, for the 30 to 90 days your workspace sets.
+- **What it does:** the risk engine counts per visitor (accounts, sign-ups, countries, stored-id resets), checks the
+  browser's clock against the address and decides. Every signal only ever asks for more (a number-matched approval or
+  a passkey; on a sign-up, your own extra check). It never lets anyone skip a check and never blocks on its own.
+  Signals start in shadow: reported and counted, asking only on visitors your admin marked "Step up always".
+- **Never respawned:** the stored id lives in `localStorage` only. A cleared browser is matched back by its traits
+  on TouchQue's side, not by copying the id between stores.
+
+**Tell your users.** Use it only on sign-in, sign-up, password-reset and approval pages, and say it in your
+privacy notice. In Turkey (KVKK) account security can rest on legitimate interest (art. 5/2(f)); in the EU,
+reading the device needs consent unless it is strictly necessary for the security of a sign-in the user asked
+for (ePrivacy art. 5(3)), and a check that lets a known device do less does not count. Ask your lawyer. A
+starting text is on the dashboard's Device risk → Settings tab.
 
 ## "Why?": case codes
 
@@ -256,8 +373,9 @@ characters or pointer coordinates leave the browser. The server keeps them for
 60 seconds and compares them with fixed bot rules; no per-user profile is
 built from them.
 
-**Device signals** (`collectDeviceFingerprint: true`, and only when the
-workspace enables device fingerprinting; the server drops them otherwise):
+**Device signals (deprecated)** (`collectDeviceSignals()`): TouchQue no longer
+reads them; `attachBehavioral({ collectDeviceFingerprint: true })` sends the
+Device risk report instead. What the old call computes:
 
 - a random id in `localStorage` (`tq_device_id`), kept until the user clears
   site data;
@@ -274,6 +392,10 @@ On the server, keyed hashes of these are kept as follows:
 | Accounts seen per browser and per address (velocity) | 1 hour |
 | Recognised browsers in your workspace | Deleted after 400 days unseen |
 | Risk assessment records (pseudonymised, train a shadow-mode model) | 365 days |
+
+**Device risk** (`deviceRisk.collect`, only when the workspace turns Device risk on): see
+[Device risk](#device-risk-sign-in-sign-up-reset-and-approval-pages). Keyed hashes and coarse labels, kept 30
+to 90 days as the workspace sets; never raw traits, never linked across workspaces.
 
 **Mirror Alarm canary** (always, when the server's step carries one): the page's origin, whether it runs in
 a frame, the host of `document.referrer`, and the address the request came from, kept with the sign-in
@@ -299,6 +421,14 @@ key's thumbprint with the user who approved in that browser, with when it was la
 - For silent sign-ins: a secure context (https or localhost) with IndexedDB.
 - A TouchQue server SDK on your backend relaying the requests.
 
+## Logging
+
+The SDK keeps the browser console clean. While you integrate, `setTouchQueLogger(console)` shows its own problems (identify could not reach TouchQue, telemetry that did not start); on the device.js script tag, add `data-debug`. `setTouchQueLogger(null)` turns it off again.
+
 ## License
 
 MIT © [TouchQue](https://touchque.com)
+
+## TouchQue Login (hosted sign-in)
+
+Sign-up and sign-in pages for your own customers, on your brand, with OpenID Connect. See [HOSTED_LOGIN.md](../HOSTED_LOGIN.md) for this SDK's client and a quickstart.

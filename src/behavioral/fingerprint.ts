@@ -1,3 +1,9 @@
+// DEPRECATED: Device risk (src/deviceRisk.ts, deviceRisk.identify / collect)
+// replaced these signals; TouchQue no longer reads `deviceSignals` or the v1
+// fingerprint. This file keeps the trait helpers deviceRisk.ts uses, and
+// collectDeviceSignals / generateDeviceFingerprint as shims for code that
+// still calls them.
+//
 // Browser device signals — deliberately separate from the movement tracker.
 // A persistent device identity is a materially bigger privacy footprint than
 // per-challenge movement aggregates (it identifies a browser across
@@ -54,7 +60,8 @@ function randomId(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-function readOrCreateDeviceId(): string | null {
+/** The stable random id (`tq2_…`), shared with deviceRisk.ts; null when storage is unavailable. */
+export function readOrCreateDeviceId(): string | null {
   try {
     const existing = window.localStorage.getItem(STORAGE_KEY);
     if (existing && /^tq2_[0-9a-f]{32}$/.test(existing)) return existing;
@@ -68,7 +75,7 @@ function readOrCreateDeviceId(): string | null {
 
 // ── individual signals (each fails soft to null) ────────────────────────────
 
-function webglRenderer(): string | null {
+export function webglRenderer(): string | null {
   try {
     const canvas = document.createElement('canvas');
     const gl = (canvas.getContext('webgl') || canvas.getContext('experimental-webgl')) as WebGLRenderingContext | null;
@@ -81,7 +88,7 @@ function webglRenderer(): string | null {
   }
 }
 
-function canvasSignature(): string | null {
+export function canvasSignature(): string | null {
   try {
     const canvas = document.createElement('canvas');
     canvas.width = 240;
@@ -108,7 +115,7 @@ function canvasSignature(): string | null {
   }
 }
 
-async function audioSignature(): Promise<string | null> {
+export async function audioSignature(): Promise<string | null> {
   try {
     const Ctx = (window as unknown as { OfflineAudioContext?: typeof OfflineAudioContext; webkitOfflineAudioContext?: typeof OfflineAudioContext });
     const Offline = Ctx.OfflineAudioContext || Ctx.webkitOfflineAudioContext;
@@ -139,8 +146,8 @@ const FONT_PROBES = ['Arial', 'Helvetica', 'Times New Roman', 'Courier New', 'Ve
   'Comic Sans MS', 'Trebuchet MS', 'Impact', 'Tahoma', 'Segoe UI', 'Calibri', 'Cambria', 'Consolas', 'Menlo', 'Monaco',
   'Roboto', 'Ubuntu', 'Noto Sans', 'Lucida Grande', 'Helvetica Neue', 'SF Pro Text', 'Apple Color Emoji'];
 
-/** Number of probe fonts that render differently from the fallback (a cheap installed-fonts count). */
-function installedFontCount(): number | null {
+/** The probe fonts that render differently from the fallback (a cheap installed-fonts list), or null. */
+export function installedFonts(): string[] | null {
   try {
     const span = document.createElement('span');
     span.style.cssText = 'position:absolute;left:-9999px;top:-9999px;font-size:72px;visibility:hidden';
@@ -151,16 +158,22 @@ function installedFontCount(): number | null {
       return `${span.offsetWidth}x${span.offsetHeight}`;
     };
     const baselines = ['monospace', 'sans-serif', 'serif'].map(measure);
-    let count = 0;
+    const found: string[] = [];
     for (const font of FONT_PROBES) {
       const differs = ['monospace', 'sans-serif', 'serif'].some((base, i) => measure(`'${font}',${base}`) !== baselines[i]);
-      if (differs) count++;
+      if (differs) found.push(font);
     }
     document.body.removeChild(span);
-    return count;
+    return found;
   } catch {
     return null;
   }
+}
+
+/** Number of probe fonts that render differently from the fallback (a cheap installed-fonts count). */
+function installedFontCount(): number | null {
+  const found = installedFonts();
+  return found ? found.length : null;
 }
 
 /** cyrb53 with a seed: 53 bits as 14 hex digits. */
@@ -183,7 +196,7 @@ function cyrb53Hex(input: string, seed: number): string {
  * one 53-bit value with zeros, so every browser on an http page sent the
  * same all-zero fingerprint (R1-16).
  */
-async function digestHex(input: string): Promise<{ hex: string; weak: boolean }> {
+export async function digestHex(input: string): Promise<{ hex: string; weak: boolean }> {
   try {
     if (typeof crypto !== 'undefined' && crypto.subtle) {
       const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
@@ -196,6 +209,7 @@ async function digestHex(input: string): Promise<{ hex: string; weak: boolean }>
 /**
  * Collects the browser's device signals. Never throws; on failure returns a
  * best-effort object (fingerprint 'fp_error' when even that is impossible).
+ * @deprecated Use `deviceRisk.identify()`: TouchQue matches the visitor on its side.
  */
 export async function collectDeviceSignals(): Promise<DeviceSignals> {
   try {
@@ -240,8 +254,8 @@ export async function collectDeviceSignals(): Promise<DeviceSignals> {
 }
 
 /**
- * v1 fingerprint (canvas + screen + UA hash), kept so existing integrations
- * and the server's drift comparison keep working. Prefer collectDeviceSignals().
+ * v1 fingerprint (canvas + screen + UA hash).
+ * @deprecated Use `deviceRisk.identify()`; TouchQue no longer reads this.
  */
 export function generateDeviceFingerprint(): string {
   try {
