@@ -9,7 +9,8 @@ const { version } = JSON.parse(readFileSync('package.json', 'utf8')) as { versio
 async function writeDeviceSri() {
   const file = 'dist/touchque-device.global.js';
   const integrity = `sha384-${createHash('sha384').update(readFileSync(file)).digest('base64')}`;
-  const src = `https://cdn.touchque.com/device/v${version}/device.js`;
+  // script.js since 2026-11-10; the CDN keeps device.js answering with the same bytes.
+  const src = `https://cdn.touchque.com/device/v${version}/script.js`;
   writeFileSync('dist/device-sri.json', `${JSON.stringify({ version, src, integrity }, null, 2)}\n`);
 }
 
@@ -23,18 +24,18 @@ export default defineConfig([
     treeshake: true,
   },
   // Standalone <script> build for the behavioral widget — sets
-  // `window.TouchQueBehavioral = { attach }`.
+  // `window.TouchqueBehavioral = { attach }`.
   {
     entry: { 'touchque-behavioral': 'src/behavioral/global.ts' },
     format: ['iife'],
-    globalName: 'TouchQueBehavioral',
+    globalName: 'TouchqueBehavioral',
     dts: false,
     clean: false,
     minify: true,
     treeshake: true,
   },
-  // The Device risk script tag (served as device.js): one line on the page,
-  // no dependency; sets `window.TouchQueDevice`.
+  // The Device risk script tag (served as script.js): one line on the page,
+  // no dependency; sets `window.TouchqueDevice`.
   {
     entry: { 'touchque-device': 'src/deviceRiskGlobal.ts' },
     format: ['iife'],

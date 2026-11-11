@@ -1,5 +1,5 @@
 // DEPRECATED: Device risk (src/deviceRisk.ts, deviceRisk.identify / collect)
-// replaced these signals; TouchQue no longer reads `deviceSignals` or the v1
+// replaced these signals; Touchque no longer reads `deviceSignals` or the v1
 // fingerprint. This file keeps the trait helpers deviceRisk.ts uses, and
 // collectDeviceSignals / generateDeviceFingerprint as shims for code that
 // still calls them.
@@ -100,6 +100,9 @@ export function canvasSignature(): string | null {
     ctx.fillRect(125, 1, 62, 20);
     ctx.fillStyle = '#069';
     ctx.font = "14px 'Arial'";
+    // The drawn text is an input of the fingerprint, so it keeps its original
+    // spelling: Touchque's servers keep keyed hashes of this drawing (the Device
+    // risk `cv` trait) and match new ones against them.
     ctx.fillText('TouchQue device \u{1F512} \u00E7\u011F\u0131\u00F6\u015F\u00FC', 2, 15);
     ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
     ctx.font = "18px serif";
@@ -209,7 +212,7 @@ export async function digestHex(input: string): Promise<{ hex: string; weak: boo
 /**
  * Collects the browser's device signals. Never throws; on failure returns a
  * best-effort object (fingerprint 'fp_error' when even that is impossible).
- * @deprecated Use `deviceRisk.identify()`: TouchQue matches the visitor on its side.
+ * @deprecated Use `deviceRisk.identify()`: Touchque matches the visitor on its side.
  */
 export async function collectDeviceSignals(): Promise<DeviceSignals> {
   try {
@@ -255,7 +258,7 @@ export async function collectDeviceSignals(): Promise<DeviceSignals> {
 
 /**
  * v1 fingerprint (canvas + screen + UA hash).
- * @deprecated Use `deviceRisk.identify()`; TouchQue no longer reads this.
+ * @deprecated Use `deviceRisk.identify()`; Touchque no longer reads this.
  */
 export function generateDeviceFingerprint(): string {
   try {
@@ -269,9 +272,9 @@ export function generateDeviceFingerprint(): string {
     ctx.fillStyle = '#f60';
     ctx.fillRect(125, 1, 62, 20);
     ctx.fillStyle = '#069';
-    ctx.fillText('TouchQue Behavioral Widget Fingerprint', 2, 15);
+    ctx.fillText('Touchque Behavioral Widget Fingerprint', 2, 15);
     ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
-    ctx.fillText('TouchQue Behavioral Widget Fingerprint', 4, 17);
+    ctx.fillText('Touchque Behavioral Widget Fingerprint', 4, 17);
 
     const canvasData = canvas.toDataURL();
     const screenData = `${window.screen.width}x${window.screen.height}-${window.screen.colorDepth}`;

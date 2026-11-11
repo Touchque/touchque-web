@@ -1,20 +1,20 @@
-// Step-up from the browser, without any TouchQue UI.
+// Step-up from the browser, without any Touchque UI.
 //
-// Your server protects a route with requireTouchQue('SEND_MONEY') (or any
-// TouchQue server SDK). Call it with touchqueFetch instead of fetch:
+// Your server protects a route with requireTouchque('SEND_MONEY') (or any
+// Touchque server SDK). Call it with touchqueFetch instead of fetch:
 //
 //   const res = await touchqueFetch('/api/transfer', { method: 'POST', body }, {
 //     onStep(step, controls) {
 //       // render it YOUR way:
 //       //   step.state === 'waiting'  → "Approve on your phone", show step.number if present
-//       //   step.state === 'enroll'   → <img src={step.enroll.qrCodeDataUrl}> "Scan with TouchQue"
+//       //   step.state === 'enroll'   → <img src={step.enroll.qrCodeDataUrl}> "Scan with Touchque"
 //       //   step.state === 'offline'  → <img src={step.offline.qrDataUrl}> + input → controls.submitCode(code)
 //       //   controls.useOffline()     → phone has no internet
 //     },
 //   });
 //   // res is your route's own response once approved (or the final 403/408/423/429).
 //
-// While waiting it re-sends the same request with the X-TouchQue-Token header
+// While waiting it re-sends the same request with the X-Touchque-Token header
 // every `pollIntervalMs`. Your route runs once, after approval.
 
 export type StepState =
@@ -42,14 +42,14 @@ export interface Step {
   /**
    * "Why?" (server SDKs 4.0.0): the case code of this decision (`K7P-2QX`).
    * Show it with the step ("Tell your support team: K7P-2QX"); the team opens
-   * the whole decision by this code in the TouchQue dashboard.
+   * the whole decision by this code in the Touchque dashboard.
    */
   caseCode?: string;
   /** Why number matching, a passkey or a refusal (plain English, a fixed list, never a score). */
   reasons?: Array<{ code: string; text: string }>;
   retryAfter?: number;
   assurance?: { phishingResistant: boolean; method: string };
-  /** Only when the workspace collects behavioural signals (see `TouchQueFetchOptions.telemetry`). */
+  /** Only when the workspace collects behavioural signals (see `TouchqueFetchOptions.telemetry`). */
   telemetryToken?: string;
   /**
    * Mirror Alarm (server SDKs 3.4.0): touchqueFetch loads it on this page by
@@ -60,7 +60,7 @@ export interface Step {
 }
 
 /**
- * Mirror Alarm: tells TouchQue which page shows this sign-in, so a phishing
+ * Mirror Alarm: tells Touchque which page shows this sign-in, so a phishing
  * proxy in front of your site gets the approval refused. Loads the canary as a
  * hidden image (the browser adds the page's origin as Referer) and sends a
  * beacon with `location.origin`. touchqueFetch does it by itself for every
@@ -110,16 +110,16 @@ export interface StepControls {
   cancel(): void;
 }
 
-export interface TouchQueFetchOptions {
+export interface TouchqueFetchOptions {
   onStep?: (step: Step, controls: StepControls) => void;
   /** How often to re-check while waiting (default 1500 ms). */
   pollIntervalMs?: number;
   signal?: AbortSignal;
-  /** Passkey approval for `passkey_required` (set automatically by createTouchQueWeb). */
+  /** Passkey approval for `passkey_required` (set automatically by createTouchqueWeb). */
   approveWithPasskey?: (requestId: string) => Promise<unknown>;
   /**
-   * Silent sign-ins: makes the browser key proof sent as `X-TouchQue-Browser`
-   * with each request (set by createTouchQueWeb with `browserKey: true`; or
+   * Silent sign-ins: makes the browser key proof sent as `X-Touchque-Browser`
+   * with each request (set by createTouchqueWeb with `browserKey: true`; or
    * pass `browserKey.proof`). `null`, or an error, sends no header.
    */
   browserProof?: () => Promise<string | null>;
@@ -129,7 +129,7 @@ export interface TouchQueFetchOptions {
    * them (the server's step then carries a `telemetryToken`). Off unless set.
    */
   telemetry?: {
-    /** TouchQue API base URL, e.g. `https://api.touchque.com`. */
+    /** Touchque API base URL, e.g. `https://api.touchque.com`. */
     apiBaseUrl: string;
     /** Element whose pointer/keyboard activity is measured (default: document.body). */
     container?: string | Element;
@@ -145,12 +145,12 @@ import { logWarn, errorText } from './log';
 const TERMINAL: StepState[] = ['approved', 'rejected', 'expired', 'blocked', 'frozen', 'rate_limited'];
 
 function abortError(): Error {
-  const e = new Error('TouchQue approval cancelled');
+  const e = new Error('Touchque approval cancelled');
   e.name = 'AbortError';
   return e;
 }
 
-export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit = {}, options: TouchQueFetchOptions = {}): Promise<Response> {
+export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit = {}, options: TouchqueFetchOptions = {}): Promise<Response> {
   const doFetch = (options.fetch ?? fetch).bind(globalThis);
   const poll = options.pollIntervalMs ?? 1500;
   let token: string | undefined;
@@ -203,11 +203,11 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
       if (cancelled) throw abortError();
       const headers = new Headers(request?.headers);
       new Headers(init.headers).forEach((value, name) => headers.set(name, value));
-      if (token) headers.set('X-TouchQue-Token', token);
-      if (offline) headers.set('X-TouchQue-Offline', '1');
+      if (token) headers.set('X-Touchque-Token', token);
+      if (offline) headers.set('X-Touchque-Offline', '1');
       if (code) {
-        headers.set('X-TouchQue-Code', code.value);
-        if (code.type === 'totp') headers.set('X-TouchQue-Code-Type', 'totp');
+        headers.set('X-Touchque-Code', code.value);
+        if (code.type === 'totp') headers.set('X-Touchque-Code-Type', 'totp');
       }
       offline = false;
       code = undefined;
@@ -231,7 +231,7 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
 
       if (!step || res.status !== 202) {
         if (step) options.onStep?.(step, controls);
-        return res; // your route's response, or a final TouchQue refusal
+        return res; // your route's response, or a final Touchque refusal
       }
       token = typeof body.token === 'string' ? body.token : token;
       if (!tracker && options.telemetry && step.telemetryToken && step.requestId && typeof document !== 'undefined') {
@@ -241,7 +241,7 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
             collectDeviceFingerprint: options.telemetry.collectDeviceFingerprint, fetch: options.fetch,
           });
         } catch (err) {
-          logWarn(`[TouchQue] behavioural telemetry not started: ${errorText(err)}`);
+          logWarn(`[Touchque] behavioural telemetry not started: ${errorText(err)}`);
         }
       }
       // While the QR is on screen the loop keeps checking (so a phone-side reject ends the attempt at once).
@@ -263,7 +263,7 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
       // Offline: keep checking the push while the user reads the QR / types the code; a submitted code wakes us.
       await sleep(poll);
       // One submission, after the user has had a moment on the page: it must
-      // reach TouchQue before the approval does to count.
+      // reach Touchque before the approval does to count.
       if (tracker && !telemetrySent) {
         telemetrySent = true;
         void tracker.submit();

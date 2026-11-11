@@ -2,8 +2,8 @@
 // Is a person at this page, or a browser driven by software (Playwright,
 // Puppeteer, Selenium, a CDP-driven or headless Chrome, an AI browser agent)?
 // Start it when the page loads, read it when the form is sent, and send the
-// encoded result to your server, which passes it to TouchQue as
-// `clientSignals` (login.request, risk.check). TouchQue weighs it with what
+// encoded result to your server, which passes it to Touchque as
+// `clientSignals` (login.request, risk.check). Touchque weighs it with what
 // it sees on the network and answers `automated_client`: never a silent
 // sign-in, never an email code alone, a passkey or a number-matched approval.
 //
@@ -12,7 +12,7 @@
 //
 // Only booleans, counts and timings: never what was typed, where the
 // pointer went, or anything that identifies the browser. `pm` is how the
-// pointer and the fingers moved, as counts (pointerSummary.ts): TouchQue's
+// pointer and the fingers moved, as counts (pointerSummary.ts): Touchque's
 // risk engine weighs it as device_pointer_synthetic.
 //
 // An agent trap (addAgentTrap) adds a field people never see, with a note
@@ -90,7 +90,7 @@ export function addAgentTrap(form: HTMLElement): HTMLInputElement {
 
 export interface ClientSignalsProbe {
   collect(): ClientSignals;
-  /** base64url JSON, for a hidden form field or the X-TouchQue-Client header. */
+  /** base64url JSON, for a hidden form field or the X-Touchque-Client header. */
   encode(): string;
   stop(): void;
 }

@@ -12,7 +12,7 @@
 // are a hint the server reads for device trust, never a proof: they are NOT
 // part of the signed message, so anything on the page could have set them.
 //
-// Your server passes the proof (`X-TouchQue-Browser`) to TouchQue untouched:
+// Your server passes the proof (`X-Touchque-Browser`) to Touchque untouched:
 // with the push (`login.request`), so the user's approval makes this browser
 // known, and to `risk.check` (the server SDKs' `silentSignIn` option), so a
 // later sign-in from the same browser skips the phone when nothing about it is
@@ -22,7 +22,7 @@
 //   const proof = await browserKey.proof(); // base64url JSON, or null
 
 /** The header a proof travels in from the browser to your server. */
-export const BROWSER_PROOF_HEADER = 'X-TouchQue-Browser';
+export const BROWSER_PROOF_HEADER = 'X-Touchque-Browser';
 
 const DB_NAME = 'touchque';
 const STORE_NAME = 'keys';
@@ -57,7 +57,7 @@ export interface UserAgentDataLike {
   getHighEntropyValues(hints: string[]): Promise<unknown>;
 }
 
-/** What `X-TouchQue-Browser` carries, as base64url(JSON.stringify(proof)). */
+/** What `X-Touchque-Browser` carries, as base64url(JSON.stringify(proof)). */
 export interface BrowserProof {
   v: 1;
   jwk: BrowserKeyJwk;
@@ -127,7 +127,7 @@ export interface BrowserKeyOptions {
 export interface BrowserKey {
   /**
    * A fresh proof of this browser's key, base64url JSON for the
-   * `X-TouchQue-Browser` header. Makes the key on first use. Resolves `null`
+   * `X-Touchque-Browser` header. Makes the key on first use. Resolves `null`
    * (never throws) when WebCrypto or IndexedDB is unavailable or too slow.
    * Carries unsigned `hints` (see `BrowserHints`) when the browser has them.
    */
@@ -148,7 +148,7 @@ export interface BrowserKey {
    */
   sealDevice?(digest: string): Promise<DeviceSeal | null>;
   /**
-   * Deletes this browser's key: the next proof uses a new key, so TouchQue
+   * Deletes this browser's key: the next proof uses a new key, so Touchque
    * treats it as a new browser. Use it on shared computers or when the user
    * signs out everywhere (and forget it on the server too). Never throws.
    */
@@ -259,7 +259,7 @@ function within<T>(work: () => Promise<T | null>, ms: number): Promise<T | null>
 const HINTS_TIMEOUT_MS = 300;
 const HINT_MAX_BRANDS = 8;
 const HINT_MAX_CHARS = 64;
-/** The server refuses an `X-TouchQue-Browser` value longer than this; hints are dropped before a proof grows past it. */
+/** The server refuses an `X-Touchque-Browser` value longer than this; hints are dropped before a proof grows past it. */
 const MAX_HEADER_CHARS = 2048;
 
 const hintString = (v: unknown): string => (typeof v === 'string' ? v.trim().slice(0, HINT_MAX_CHARS) : '');

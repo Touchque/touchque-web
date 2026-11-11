@@ -5,7 +5,7 @@ import {
   createBrowserKey, browserKey, browserProofMessage, browserKeyThumbprint, browserKeyThumbprintInput,
   type BrowserKeyStore, type BrowserProof,
 } from './browserKey';
-import { createTouchQueWeb } from './index';
+import { createTouchqueWeb } from './index';
 
 const ORIGIN = 'https://app.example.com';
 const subtle = webcrypto.subtle as unknown as SubtleCrypto;
@@ -284,7 +284,7 @@ describe('browserKey.proof hints (unsigned User-Agent Client Hints)', () => {
   });
 });
 
-describe('createTouchQueWeb({ browserKey })', () => {
+describe('createTouchqueWeb({ browserKey })', () => {
   const json = (body: unknown, status: number) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   function server(responses: Response[]) {
     const seen: Headers[] = [];
@@ -296,9 +296,9 @@ describe('createTouchQueWeb({ browserKey })', () => {
   }
   const waiting = () => json({ touchque: { state: 'waiting', requestId: 'r1' }, token: 't1' }, 202);
 
-  test('guarded requests carry a fresh X-TouchQue-Browser proof, polls included', async () => {
+  test('guarded requests carry a fresh X-Touchque-Browser proof, polls included', async () => {
     const s = server([waiting(), json({ ok: true }, 200)]);
-    const tq = createTouchQueWeb({ baseUrl: ORIGIN, fetch: s.fetch, browserKey: nodeKey() });
+    const tq = createTouchqueWeb({ baseUrl: ORIGIN, fetch: s.fetch, browserKey: nodeKey() });
     const res = await tq.fetch('/api/settings', { method: 'POST', headers: { 'X-CSRF': 'c' } }, { pollIntervalMs: 1 });
     expect(res.status).toBe(200);
     const proofs = s.seen.map((h) => h.get('x-touchque-browser')!);
@@ -310,7 +310,7 @@ describe('createTouchQueWeb({ browserKey })', () => {
 
   test('the classic 2FA login carries it; a silent answer resolves at once', async () => {
     const s = server([json({ status: 'success', requestId: 'silent', assurance: { phishingResistant: false, method: 'silent' } }, 200)]);
-    const tq = createTouchQueWeb({ baseUrl: ORIGIN, fetch: s.fetch, browserKey: nodeKey() });
+    const tq = createTouchqueWeb({ baseUrl: ORIGIN, fetch: s.fetch, browserKey: nodeKey() });
     const onStep = vi.fn();
     const result = await tq.classic2fa.login({ externalUsername: 'jane@acme.com', onStep });
     expect(result).toEqual({ status: 'success', requestId: 'silent', assurance: { phishingResistant: false, method: 'silent' } });
@@ -320,20 +320,20 @@ describe('createTouchQueWeb({ browserKey })', () => {
 
   test('off by default; with no key available the request goes out without the header', async () => {
     const off = server([json({ ok: true }, 200), json({ status: 'success', requestId: 'r1' }, 200)]);
-    const tq = createTouchQueWeb({ baseUrl: ORIGIN, fetch: off.fetch });
+    const tq = createTouchqueWeb({ baseUrl: ORIGIN, fetch: off.fetch });
     await tq.fetch('/api/settings');
     await tq.classic2fa.login();
     expect(off.seen.map((h) => h.get('x-touchque-browser'))).toEqual([null, null]);
 
     // `true` uses IndexedDB, which jsdom lacks: no header, no error, the usual push.
     const none = server([waiting(), json({ status: 'success', requestId: 'r1' }, 200)]);
-    const tq2 = createTouchQueWeb({ baseUrl: ORIGIN, fetch: none.fetch, browserKey: true });
+    const tq2 = createTouchqueWeb({ baseUrl: ORIGIN, fetch: none.fetch, browserKey: true });
     expect(tq2.browserKey).toBe(browserKey);
     await expect(tq2.classic2fa.login({ pollIntervalMs: 1 })).resolves.toMatchObject({ requestId: 'r1' });
     expect(none.seen.map((h) => h.get('x-touchque-browser'))).toEqual([null, null]);
 
     const throwing = server([json({ ok: true }, 200)]);
-    const tq3 = createTouchQueWeb({
+    const tq3 = createTouchqueWeb({
       baseUrl: ORIGIN, fetch: throwing.fetch, browserKey: { proof: () => Promise.reject(new Error('x')), thumbprint: async () => null, forget: async () => {} },
     });
     expect((await tq3.fetch('/api/settings')).status).toBe(200);

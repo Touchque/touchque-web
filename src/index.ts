@@ -1,13 +1,13 @@
-// @touchque/web — browser SDK for TouchQue Authenticator.
+// @touchque/web — browser SDK for Touchque Authenticator.
 //
 // Wraps the WebAuthn passkey ceremonies (register / authenticate / approve)
-// around calls to *your own backend*, which relays them to TouchQue with its
-// API key. The browser never holds the API key and never calls TouchQue's
+// around calls to *your own backend*, which relays them to Touchque with its
+// API key. The browser never holds the API key and never calls Touchque's
 // `/webauthn/*` endpoints directly.
 //
-//   import { createTouchQueWeb } from '@touchque/web';
+//   import { createTouchqueWeb } from '@touchque/web';
 //
-//   const tq = createTouchQueWeb({ baseUrl: 'https://api.example.com' });
+//   const tq = createTouchqueWeb({ baseUrl: 'https://api.example.com' });
 //
 //   // passwordless sign-in
 //   const result = await tq.passkeys.authenticate({ email: 'user@example.com' });
@@ -20,11 +20,11 @@ import { ClassicTwoFactor } from './classic2fa';
 import { OfflineSign } from './offline';
 import { attachBehavioral, collectDeviceSignals } from './behavioral';
 import { touchqueFetch, sendCanary } from './action';
-import type { TouchQueFetchOptions } from './action';
+import type { TouchqueFetchOptions } from './action';
 import { browserKey as defaultBrowserKey } from './browserKey';
 import type { BrowserKey } from './browserKey';
 import type { AttachBehavioralOptions, BehavioralHandle } from './behavioral';
-import type { TouchQueWebConfig, TouchQuePaths } from './types';
+import type { TouchqueWebConfig, TouchquePaths } from './types';
 
 export * from './types';
 export * from './errors';
@@ -37,7 +37,7 @@ export type { OfflineChallenge, OfflineVerifyResult, OfflineSignPaths } from './
 export type { AttachBehavioralOptions, BehavioralHandle, BehavioralMetrics } from './behavioral';
 export type { ClassicTwoFactorPaths, EnrollStartResult, LinkStatus, ClassicLoginResult, ClassicLoginOptions } from './classic2fa';
 export { touchqueFetch, sendCanary };
-export type { Step, StepState, StepControls, TouchQueFetchOptions } from './action';
+export type { Step, StepState, StepControls, TouchqueFetchOptions } from './action';
 export type { RegisterApprovalOptions } from './passkeys';
 export {
   browserKey, createBrowserKey, browserProofMessage, browserKeyThumbprint, browserKeyThumbprintInput, BROWSER_PROOF_HEADER,
@@ -47,15 +47,15 @@ export {
   ApprovalController, createApproval, describeApprovalStep, approvalTimeLeft, isPngDataUrl, DEFAULT_APPROVAL_TEXTS, approvalAttribution,
 } from './approval';
 export type { ApprovalState, ApprovalPhase, ApprovalError, ApprovalTexts, ApprovalOptions } from './approval';
-export { defineTouchQueApproval, APPROVAL_ICONS } from './approvalElement';
-export type { TouchQueApprovalElement } from './approvalElement';
+export { defineTouchqueApproval, APPROVAL_ICONS } from './approvalElement';
+export type { TouchqueApprovalElement } from './approvalElement';
 export { APPROVAL_STYLES } from './approvalStyles';
 export { isPasskeyAutofillAvailable } from './passkeys';
 export { deviceRisk, createDeviceRisk, DEVICE_RISK_FIELD, DEVICE_RISK_HEADER, DEVICE_RISK_PURPOSES } from './deviceRisk';
-export { setTouchQueLogger } from './log';
-export type { TouchQueWebLogger } from './log';
+export { setTouchqueLogger } from './log';
+export type { TouchqueWebLogger } from './log';
 export { installDeviceRiskTag, REQUEST_ID_FIELD, FORM_PURPOSE_ATTRIBUTE, DEVICE_EVENT } from './deviceRiskTag';
-export type { DeviceRiskTagOptions, TouchQueDevice } from './deviceRiskTag';
+export type { DeviceRiskTagOptions, TouchqueDevice } from './deviceRiskTag';
 export type {
   DeviceRisk, DeviceRiskPurpose, DeviceRiskReport, DeviceRiskBody, DeviceRiskTraits, DeviceRiskFindings, DeviceRiskCollectOptions,
   DeviceRiskIdentifyOptions, DeviceRiskIdentification,
@@ -72,7 +72,7 @@ export type { PasskeyOfferOptions } from './upgrade';
 
 // Matches touchqueRouter's default mount paths in @touchque/node exactly —
 // pairing the two needs zero `paths` config.
-const DEFAULT_PATHS: TouchQuePaths = {
+const DEFAULT_PATHS: TouchquePaths = {
   registerOptions: '/passkey/register/options',
   registerVerify: '/passkey/register/verify',
   authenticateOptions: '/passkey/authenticate/options',
@@ -89,13 +89,13 @@ const DEFAULT_PATHS: TouchQuePaths = {
   offlineTotp: '/offline/totp',
 };
 
-export interface TouchQueWeb {
+export interface TouchqueWeb {
   /**
-   * fetch() for routes protected with requireTouchQue: re-sends while the user
+   * fetch() for routes protected with requireTouchque: re-sends while the user
    * approves, hands each step to `onStep` for YOUR UI, and runs the passkey
    * approval when a policy requires it. Resolves with your route's response.
    */
-  fetch(input: RequestInfo | URL, init?: RequestInit, options?: TouchQueFetchOptions): Promise<Response>;
+  fetch(input: RequestInfo | URL, init?: RequestInit, options?: TouchqueFetchOptions): Promise<Response>;
   passkeys: Passkeys;
   /** Classic push / number-match 2FA — enrollment + login, no WebAuthn. */
   classic2fa: ClassicTwoFactor;
@@ -110,7 +110,7 @@ export interface TouchQueWeb {
   behavioral: {
     /**
      * Attach the behavioral biometrics widget to a container. Unlike the
-     * passkey calls, this posts directly to TouchQue (`apiBaseUrl`), gated
+     * passkey calls, this posts directly to Touchque (`apiBaseUrl`), gated
      * by the per-request `telemetryToken`.
      */
     attach(target: string | Element, options: AttachBehavioralOptions): BehavioralHandle;
@@ -121,9 +121,9 @@ export interface TouchQueWeb {
   isPlatformAuthenticatorAvailable(): Promise<boolean>;
 }
 
-export function createTouchQueWeb(config: TouchQueWebConfig): TouchQueWeb {
+export function createTouchqueWeb(config: TouchqueWebConfig): TouchqueWeb {
   const http = new RelayHttp(config);
-  const paths: TouchQuePaths = { ...DEFAULT_PATHS, ...(config.paths ?? {}) };
+  const paths: TouchquePaths = { ...DEFAULT_PATHS, ...(config.paths ?? {}) };
   const passkeys = new Passkeys(http, paths);
   const classic2fa = new ClassicTwoFactor(http, paths);
   const offline = new OfflineSign(http, paths);
@@ -150,7 +150,7 @@ export function createTouchQueWeb(config: TouchQueWebConfig): TouchQueWeb {
   };
 }
 
-// TouchQue Login (hosted sign-in) for single-page apps
+// Touchque Login (hosted sign-in) for single-page apps
 export { HostedLoginClient, HostedLoginError } from './hostedLogin';
 export type { HostedLoginClientOptions, LoginWithRedirectOptions, HostedLoginUser } from './hostedLogin';
 export { MyAccountClient, MyAccountError } from './myAccount';

@@ -1,10 +1,10 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   installDeviceRiskTag, installFromScript, REQUEST_ID_FIELD, REFRESH_AFTER_MS, AFTER_SUBMIT_MS, DEVICE_EVENT,
-  type TouchQueDevice,
+  type TouchqueDevice,
 } from './deviceRiskTag';
 import type { DeviceRiskIdentifyOptions } from './deviceRisk';
-import { setTouchQueLogger } from './log';
+import { setTouchqueLogger } from './log';
 
 const SITE_KEY = `tqpk_${'a'.repeat(32)}`;
 
@@ -25,11 +25,11 @@ function fakeRisk() {
 const field = (form: Element) => form.querySelector<HTMLInputElement>(`input[name="${REQUEST_ID_FIELD}"]`);
 const flush = async () => { for (let i = 0; i < 5; i += 1) await Promise.resolve(); };
 
-let device: TouchQueDevice | null = null;
+let device: TouchqueDevice | null = null;
 
 beforeEach(() => {
   document.body.innerHTML = '';
-  delete (window as Window & { TouchQueDevice?: unknown }).TouchQueDevice;
+  delete (window as Window & { TouchqueDevice?: unknown }).TouchqueDevice;
 });
 afterEach(() => {
   device?.stop();
@@ -128,7 +128,7 @@ describe('the Device risk script tag', () => {
     expect(device.value()).toBe('dre_sign_in_1');
   });
 
-  test('TouchQue unreachable: ready is null, the field is empty, the page goes on', async () => {
+  test('Touchque unreachable: ready is null, the field is empty, the page goes on', async () => {
     document.body.innerHTML = '<form></form>';
     device = installDeviceRiskTag({ siteKey: SITE_KEY }, { deviceRisk: { identify: vi.fn(async () => null) } });
     expect(await device.ready).toBeNull();
@@ -148,14 +148,14 @@ describe('the Device risk script tag', () => {
     document.head.appendChild(script);
     device = installFromScript(script);
     expect(installFromScript(script)).toBe(device);
-    expect((window as Window & { TouchQueDevice?: TouchQueDevice }).TouchQueDevice).toBe(device);
+    expect((window as Window & { TouchqueDevice?: TouchqueDevice }).TouchqueDevice).toBe(device);
     expect((await device.ready)?.requestId).toBe('dre_from_script_0000000');
     const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe('http://localhost:5001/device-risk/identify');
     expect(JSON.parse(String(init.body))).toMatchObject({ siteKey: SITE_KEY, view: true });
     vi.unstubAllGlobals();
 
-    delete (window as Window & { TouchQueDevice?: unknown }).TouchQueDevice;
+    delete (window as Window & { TouchqueDevice?: unknown }).TouchqueDevice;
     script.remove();
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
@@ -164,13 +164,13 @@ describe('the Device risk script tag', () => {
       expect(await bare.ready).toBeNull();
       expect(warn).not.toHaveBeenCalled();
       // data-debug on the tag says it.
-      delete (window as Window & { TouchQueDevice?: unknown }).TouchQueDevice;
+      delete (window as Window & { TouchqueDevice?: unknown }).TouchqueDevice;
       const debug = document.createElement('script');
       debug.setAttribute('data-debug', '');
       expect(await installFromScript(debug).ready).toBeNull();
       expect(warn).toHaveBeenCalledWith(expect.stringContaining('data-site-key'));
     } finally {
-      setTouchQueLogger(null);
+      setTouchqueLogger(null);
       warn.mockRestore();
     }
   });

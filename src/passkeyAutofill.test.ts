@@ -10,7 +10,7 @@ const sw = vi.hoisted(() => ({
 }));
 vi.mock('@simplewebauthn/browser', () => sw);
 
-import { createTouchQueWeb, shouldOfferPasskey, dismissPasskeyOffer, rememberPasskey, forgetPasskeyOffer } from './index';
+import { createTouchqueWeb, shouldOfferPasskey, dismissPasskeyOffer, rememberPasskey, forgetPasskeyOffer } from './index';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
@@ -47,7 +47,7 @@ describe('passkeys.autofill()', () => {
     document.body.innerHTML = '<input id="email" autocomplete="username">';
     const r = relay([json({ attemptId: 'a1', options: { challenge: 'c', rpId: 'example.com' } }), json({ status: 'success', redirect_url: '/home' })]);
     sw.startAuthentication.mockResolvedValue({ id: 'cred-1' });
-    const tq = createTouchQueWeb({ baseUrl: '/tq', fetch: r.fetch });
+    const tq = createTouchqueWeb({ baseUrl: '/tq', fetch: r.fetch });
 
     const result = await tq.passkeys.autofill({ input: '#email', context: { client_id: 'app' } });
 
@@ -61,7 +61,7 @@ describe('passkeys.autofill()', () => {
   test('without autofill support it resolves null and never prompts', async () => {
     sw.browserSupportsWebAuthnAutofill.mockResolvedValue(false);
     const r = relay([]);
-    const tq = createTouchQueWeb({ baseUrl: '/tq', fetch: r.fetch });
+    const tq = createTouchqueWeb({ baseUrl: '/tq', fetch: r.fetch });
     expect(await tq.passkeys.autofill()).toBeNull();
     expect(r.calls).toHaveLength(0);
     expect(sw.startAuthentication).not.toHaveBeenCalled();
@@ -70,7 +70,7 @@ describe('passkeys.autofill()', () => {
   test('another ceremony taking over (an abort) resolves null', async () => {
     const r = relay([json({ attemptId: 'a1', options: { challenge: 'c' } })]);
     sw.startAuthentication.mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortError' }));
-    const tq = createTouchQueWeb({ baseUrl: '/tq', fetch: r.fetch });
+    const tq = createTouchqueWeb({ baseUrl: '/tq', fetch: r.fetch });
     expect(await tq.passkeys.autofill()).toBeNull();
   });
 
@@ -85,7 +85,7 @@ describe('passkeys.autofill()', () => {
     sw.startAuthentication
       .mockImplementationOnce(() => new Promise((_, reject) => { rejectFirst = reject; }))
       .mockResolvedValueOnce({ id: 'cred-2' });
-    const tq = createTouchQueWeb({ baseUrl: '/tq', fetch: r.fetch });
+    const tq = createTouchqueWeb({ baseUrl: '/tq', fetch: r.fetch });
 
     const result = await tq.passkeys.autofill({ refreshMs: 5 });
 
@@ -101,7 +101,7 @@ describe('passkeys.autofill()', () => {
       ac.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })));
     }));
     sw.WebAuthnAbortService.cancelCeremony.mockImplementation(() => { /* the mock ceremony listens to the signal itself */ });
-    const tq = createTouchQueWeb({ baseUrl: '/tq', fetch: r.fetch });
+    const tq = createTouchqueWeb({ baseUrl: '/tq', fetch: r.fetch });
     const pending = tq.passkeys.autofill({ signal: ac.signal });
     await vi.waitFor(() => expect(sw.startAuthentication).toHaveBeenCalled());
     ac.abort();
@@ -116,8 +116,8 @@ describe('passkeys.autofill() when things fail (never a request loop)', () => {
   test('a refused options call (400, a firewall 403, 429) throws at once after one request', async () => {
     for (const res of [json({ error: 'Missing required parameters' }, 400), json({ error: 'ACCESS_DENIED' }, 403), json({ error: 'rate_limited' }, 429)]) {
       const r = relay([res]);
-      const tq = createTouchQueWeb({ baseUrl: '/tq', fetch: r.fetch });
-      await expect(tq.passkeys.autofill()).rejects.toMatchObject({ name: 'TouchQueWebAPIError', status: res.status });
+      const tq = createTouchqueWeb({ baseUrl: '/tq', fetch: r.fetch });
+      await expect(tq.passkeys.autofill()).rejects.toMatchObject({ name: 'TouchqueWebAPIError', status: res.status });
       expect(r.calls).toHaveLength(1);
     }
     expect(sw.startAuthentication).not.toHaveBeenCalled();
@@ -125,7 +125,7 @@ describe('passkeys.autofill() when things fail (never a request loop)', () => {
 
   test('passwordless sign-in turned off resolves null without retrying', async () => {
     const r = relay([json({ error: 'passwordless_login_disabled' }, 403)]);
-    const tq = createTouchQueWeb({ baseUrl: '/tq', fetch: r.fetch });
+    const tq = createTouchqueWeb({ baseUrl: '/tq', fetch: r.fetch });
     expect(await tq.passkeys.autofill()).toBeNull();
     expect(r.calls).toHaveLength(1);
   });
@@ -134,7 +134,7 @@ describe('passkeys.autofill() when things fail (never a request loop)', () => {
     vi.useFakeTimers();
     try {
       const r = relay([json({}, 503), json({}, 502), json({}, 500), json({}, 504)]);
-      const tq = createTouchQueWeb({ baseUrl: '/tq', fetch: r.fetch });
+      const tq = createTouchqueWeb({ baseUrl: '/tq', fetch: r.fetch });
       const done = tq.passkeys.autofill().catch((e) => e);
       await vi.advanceTimersByTimeAsync(999);
       expect(r.calls).toHaveLength(1);
@@ -157,7 +157,7 @@ describe('passkeys.autofill() when things fail (never a request loop)', () => {
       const responses = [opts(), json({ status: 'success' })];
       const fetch = vi.fn(async () => { n += 1; if (n === 1) throw new TypeError('Failed to fetch'); return responses.shift()!; });
       sw.startAuthentication.mockResolvedValue({ id: 'c' });
-      const tq = createTouchQueWeb({ baseUrl: '/tq', fetch: fetch as unknown as typeof globalThis.fetch });
+      const tq = createTouchqueWeb({ baseUrl: '/tq', fetch: fetch as unknown as typeof globalThis.fetch });
       const done = tq.passkeys.autofill();
       await vi.advanceTimersByTimeAsync(1000);
       expect((await done)?.ok).toBe(true);
@@ -168,7 +168,7 @@ describe('passkeys.autofill() when things fail (never a request loop)', () => {
 
   test('after 5 failures the client stops asking for the rest of the page view', async () => {
     const r = relay(Array.from({ length: 5 }, () => json({ error: 'nope' }, 400)));
-    const tq = createTouchQueWeb({ baseUrl: '/tq', fetch: r.fetch });
+    const tq = createTouchqueWeb({ baseUrl: '/tq', fetch: r.fetch });
     for (let i = 0; i < 5; i++) await expect(tq.passkeys.autofill()).rejects.toBeTruthy();
     expect(await tq.passkeys.autofill()).toBeNull();
     expect(r.calls).toHaveLength(5);
@@ -185,7 +185,7 @@ describe('passkeys.autofill() when things fail (never a request loop)', () => {
       sw.startAuthentication
         .mockImplementationOnce(() => new Promise((_, reject) => { rejectOpen = reject; }))
         .mockResolvedValueOnce({ id: 'c' });
-      const tq = createTouchQueWeb({ baseUrl: '/tq', fetch: r.fetch });
+      const tq = createTouchqueWeb({ baseUrl: '/tq', fetch: r.fetch });
       const done = tq.passkeys.autofill();
       await new Promise((res) => setTimeout(res, 10));
       expect(r.calls).toHaveLength(0); // nothing while hidden
@@ -215,7 +215,7 @@ describe('passkeys.autofill() when things fail (never a request loop)', () => {
       const r = relay([opts(), json({ error: 'unknown' }, 404), opts(), json({ error: 'unknown' }, 404)]);
       sw.startAuthentication.mockResolvedValue({ id: 'gone' });
       const errors: Error[] = [];
-      const tq = createTouchQueWeb({ baseUrl: '/tq', fetch: r.fetch });
+      const tq = createTouchqueWeb({ baseUrl: '/tq', fetch: r.fetch });
       const done = tq.passkeys.autofill({ onError: (e) => errors.push(e), maxRetries: 1 });
       await vi.advanceTimersByTimeAsync(1000);
       expect(await done).toBeNull();
@@ -253,7 +253,7 @@ describe('password → passkey upgrade', () => {
   test('upgrade() registers through the relay and marks this browser', async () => {
     const r = relay([json({ challenge: 'c', rp: { id: 'example.com' } }), json({ verified: true, credentialId: 'x' })]);
     sw.startRegistration.mockResolvedValue({ id: 'new' });
-    const tq = createTouchQueWeb({ baseUrl: '/tq', fetch: r.fetch });
+    const tq = createTouchqueWeb({ baseUrl: '/tq', fetch: r.fetch });
     const result = await tq.passkeys.upgrade({ user: 'ada@example.com', label: 'MacBook' });
     expect(result.verified).toBe(true);
     expect(r.calls[1].body).toEqual({ response: { id: 'new' }, label: 'MacBook' });
@@ -263,7 +263,7 @@ describe('password → passkey upgrade', () => {
   test('a device that already holds a passkey is remembered and reported', async () => {
     const r = relay([json({ challenge: 'c' })]);
     sw.startRegistration.mockRejectedValue(Object.assign(new Error('previously registered'), { name: 'InvalidStateError' }));
-    const tq = createTouchQueWeb({ baseUrl: '/tq', fetch: r.fetch });
+    const tq = createTouchqueWeb({ baseUrl: '/tq', fetch: r.fetch });
     await expect(tq.passkeys.upgrade({ user: 'kim@example.com' })).rejects.toMatchObject({ name: 'PasskeyAlreadyRegisteredError' });
     expect(await shouldOfferPasskey({ user: 'kim@example.com' })).toBe(false);
   });
@@ -271,7 +271,7 @@ describe('password → passkey upgrade', () => {
   test('a passkey sign-in in this browser also marks it', async () => {
     const r = relay([json({ attemptId: 'a', options: { challenge: 'c' } }), json({ status: 'success' })]);
     sw.startAuthentication.mockResolvedValue({ id: 'c' });
-    const tq = createTouchQueWeb({ baseUrl: '/tq', fetch: r.fetch });
+    const tq = createTouchqueWeb({ baseUrl: '/tq', fetch: r.fetch });
     await tq.passkeys.authenticate({ email: 'eve@example.com' });
     expect(await shouldOfferPasskey({ user: 'eve@example.com' })).toBe(false);
   });

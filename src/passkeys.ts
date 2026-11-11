@@ -7,8 +7,8 @@ import {
   WebAuthnAbortService,
 } from '@simplewebauthn/browser';
 import type { RelayHttp } from './http';
-import type { TouchQuePaths, RegisterResult, AuthenticateResult, ApproveResult, PasskeySummary } from './types';
-import { PasskeyAlreadyRegisteredError, PasskeyDisabledError, PasskeyDismissedError, PasskeyNotRegisteredError, TouchQueWebError, TouchQueWebAPIError, webApiError } from './errors';
+import type { TouchquePaths, RegisterResult, AuthenticateResult, ApproveResult, PasskeySummary } from './types';
+import { PasskeyAlreadyRegisteredError, PasskeyDisabledError, PasskeyDismissedError, PasskeyNotRegisteredError, TouchqueWebError, TouchqueWebAPIError, webApiError } from './errors';
 import type { Step, StepControls } from './action';
 import { rememberPasskey } from './upgrade';
 
@@ -30,8 +30,8 @@ async function ceremony<T>(run: () => Promise<T>): Promise<T> {
   } catch (err) {
     if (isDismissal(err)) throw new PasskeyDismissedError();
     if ((err as { name?: string })?.name === 'InvalidStateError') throw new PasskeyAlreadyRegisteredError();
-    if (err instanceof TouchQueWebError) throw err;
-    throw new TouchQueWebError(
+    if (err instanceof TouchqueWebError) throw err;
+    throw new TouchqueWebError(
       `WebAuthn ceremony failed: ${(err as Error)?.message ?? String(err)}`,
     );
   }
@@ -56,7 +56,7 @@ export interface RegisterApprovalOptions {
 export class Passkeys {
   constructor(
     private readonly http: RelayHttp,
-    private readonly paths: TouchQuePaths,
+    private readonly paths: TouchquePaths,
   ) {}
 
   /**
@@ -138,7 +138,7 @@ export class Passkeys {
    * - It waits while the tab is hidden, and closes its open request when the
    *   tab is hidden (a fresh one opens when it is shown again).
    * - The options are fetched again every `refreshMs` (default 4 minutes),
-   *   before TouchQue's 5-minute challenge runs out.
+   *   before Touchque's 5-minute challenge runs out.
    *
    * `input` (an element or selector) gets `webauthn` as the last token of its
    * `autocomplete` attribute, which the browser needs; or write
@@ -192,7 +192,7 @@ export class Passkeys {
         // The browser ended a request that stayed open a while (its timeout): open a new one.
         if ((err as { name?: string })?.name === 'NotAllowedError' && current && Date.now() - started > 5000) continue;
         if (isDismissal(err)) return null;
-        throw new TouchQueWebError(`WebAuthn ceremony failed: ${(err as Error)?.message ?? String(err)}`);
+        throw new TouchqueWebError(`WebAuthn ceremony failed: ${(err as Error)?.message ?? String(err)}`);
       } finally {
         clearTimeout(timer);
         signal?.removeEventListener('abort', cancelMine);
@@ -210,7 +210,7 @@ export class Passkeys {
         if (signal?.aborted) return null;
         // A passkey the server no longer knows (removed on another device):
         // tell the browser so it stops offering it.
-        if (err instanceof TouchQueWebError && ((err as TouchQueWebAPIError).status === 404 || err instanceof PasskeyNotRegisteredError)) {
+        if (err instanceof TouchqueWebError && ((err as TouchqueWebAPIError).status === 404 || err instanceof PasskeyNotRegisteredError)) {
           signalUnknownCredential((publicKey as { rpId?: string }).rpId, (response as { id?: string }).id);
         }
         if (!onError) throw err;
@@ -308,7 +308,7 @@ const AUTOFILL_FAILURE_LIMIT = 5;
 
 /** A failure worth asking again: no answer at all, a timeout or a server error. Refusals (4xx) are final. */
 function isRetryable(err: unknown): boolean {
-  if (err instanceof TouchQueWebAPIError) return err.status === 408 || err.status >= 500;
+  if (err instanceof TouchqueWebAPIError) return err.status === 408 || err.status >= 500;
   return err instanceof TypeError; // fetch() rejects with a TypeError when the network fails
 }
 

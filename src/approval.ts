@@ -1,7 +1,7 @@
 // The drop-in approval dialog's state machine, without any UI.
 //
 // `<touchque-approval>` (approvalElement.ts) and `@touchque/react`'s
-// `<TouchQueApproval>` both render it. It drives the same two-phase step-up
+// `<TouchqueApproval>` both render it. It drives the same two-phase step-up
 // contract as `touchqueFetch` / `classic2fa.login` and turns each step into
 // what the dialog shows: the number to pick on the phone, the first-time link
 // QR, the offline QR and code, the passkey button, and the refusals with
@@ -14,13 +14,13 @@
 // The dialog opens only when the server asks for an approval; a route that
 // answers at once (or a silent sign-in) never shows it.
 
-import { createTouchQueWeb } from './index';
-import type { TouchQueWeb } from './index';
-import type { TouchQueWebConfig } from './types';
-import type { Step, StepControls, TouchQueFetchOptions } from './action';
+import { createTouchqueWeb } from './index';
+import type { TouchqueWeb } from './index';
+import type { TouchqueWebConfig } from './types';
+import type { Step, StepControls, TouchqueFetchOptions } from './action';
 import type { ClassicLoginResult } from './classic2fa';
 import { normalizeOfflineCode } from './offline';
-import { PasskeyDismissedError, PasskeyNotRegisteredError, TouchQueWebAPIError } from './errors';
+import { PasskeyDismissedError, PasskeyNotRegisteredError, TouchqueWebAPIError } from './errors';
 
 export type ApprovalPhase = 'closed' | 'waiting' | 'enroll' | 'offline' | 'passkey' | 'approved' | 'error';
 
@@ -91,7 +91,7 @@ export interface ApprovalTexts {
   supportCode: (code: string) => string;
   cancel: string;
   close: string;
-  /** The small line under the dialog. Translate it if you like, but keep the name TouchQue: a text without it shows the default. */
+  /** The small line under the dialog. Translate it if you like, but keep the name Touchque: a text without it shows the default. */
   securedBy: string;
   errors: {
     rejected: string;
@@ -122,18 +122,18 @@ const wait = (seconds?: number) => {
 
 export const DEFAULT_APPROVAL_TEXTS: ApprovalTexts = {
   waitingTitle: 'Check your phone',
-  waitingBody: 'We sent a request to the TouchQue app. Approve it there to continue.',
-  numberLabel: 'Choose this number in the TouchQue app',
+  waitingBody: 'We sent a request to the Touchque app. Approve it there to continue.',
+  numberLabel: 'Choose this number in the Touchque app',
   waitingStatus: 'Waiting for your approval…',
   expiresIn: (time) => `Expires in ${time}`,
   whyTitle: 'Why your phone is asked',
   noNotification: 'No notification?',
   useOffline: 'Verify offline',
   enrollTitle: 'Link your phone',
-  enrollBody: 'Scan this code with the TouchQue app to link your phone. Then approve the request it shows.',
+  enrollBody: 'Scan this code with the Touchque app to link your phone. Then approve the request it shows.',
   recoveryCodes: 'Recovery codes. Keep them somewhere safe; each one works once.',
   offlineTitle: 'Verify offline',
-  offlineBody: 'Scan this code with the TouchQue app. It works without internet. Then type the code the app shows.',
+  offlineBody: 'Scan this code with the Touchque app. It works without internet. Then type the code the app shows.',
   offlineNumber: 'Tap this number in the app',
   codeLabel: 'Code from the app',
   totpLabel: 'Time-based code from the app',
@@ -153,7 +153,7 @@ export const DEFAULT_APPROVAL_TEXTS: ApprovalTexts = {
   supportCode: (code) => `Tell your support team: ${code}`,
   cancel: 'Cancel',
   close: 'Close',
-  securedBy: 'Secured by TouchQue',
+  securedBy: 'Secured by Touchque',
   errors: {
     rejected: 'The request was rejected on your phone.',
     expired: 'The request expired before it was approved. Start again.',
@@ -180,8 +180,8 @@ export interface ApprovalOptions {
   texts?: Partial<Omit<ApprovalTexts, 'errors'>> & { errors?: Partial<ApprovalTexts['errors']> };
   /** How often to check while waiting (default 1500 ms). */
   pollIntervalMs?: number;
-  /** Behavioural signals for the approval (see `TouchQueFetchOptions.telemetry`). */
-  telemetry?: TouchQueFetchOptions['telemetry'];
+  /** Behavioural signals for the approval (see `TouchqueFetchOptions.telemetry`). */
+  telemetry?: TouchqueFetchOptions['telemetry'];
   /** How long the "Approved" screen stays before the dialog closes (default 900 ms). */
   approvedMs?: number;
 }
@@ -194,7 +194,7 @@ const CLOSED: ApprovalState = {
 };
 
 function abortError(): Error {
-  const e = new Error('TouchQue approval cancelled');
+  const e = new Error('Touchque approval cancelled');
   e.name = 'AbortError';
   return e;
 }
@@ -205,9 +205,9 @@ function mergeTexts(texts?: ApprovalOptions['texts']): ApprovalTexts {
   return { ...DEFAULT_APPROVAL_TEXTS, ...(texts ?? {}), errors: { ...DEFAULT_APPROVAL_TEXTS.errors, ...(texts?.errors ?? {}) } } as ApprovalTexts;
 }
 
-/** The line under the dialog as shown: `securedBy`, or the default when it leaves out TouchQue. It is always there. */
+/** The line under the dialog as shown: `securedBy`, or the default when it leaves out Touchque. It is always there. */
 export function approvalAttribution(texts: ApprovalTexts = DEFAULT_APPROVAL_TEXTS): string {
-  return typeof texts.securedBy === 'string' && texts.securedBy.includes('TouchQue') ? texts.securedBy : DEFAULT_APPROVAL_TEXTS.securedBy;
+  return typeof texts.securedBy === 'string' && texts.securedBy.includes('Touchque') ? texts.securedBy : DEFAULT_APPROVAL_TEXTS.securedBy;
 }
 
 /** The message for a refusal step (`rejected`, `blocked` + `reason`, …). */
@@ -233,7 +233,7 @@ export function describeApprovalStep(step: Step, texts: ApprovalTexts = DEFAULT_
 
 function describeThrown(err: unknown, texts: ApprovalTexts): ApprovalError {
   if (err instanceof PasskeyNotRegisteredError) return { code: 'passkey_not_registered', message: texts.errors.passkey_not_registered };
-  if (err instanceof TouchQueWebAPIError) {
+  if (err instanceof TouchqueWebAPIError) {
     const body = (err.body && typeof err.body === 'object' ? err.body : {}) as { touchque?: Step };
     if (body.touchque?.state) return describeApprovalStep(body.touchque, texts);
     return { code: `http_${err.status}`, message: texts.errors.generic, ...(err.caseCode && { caseCode: err.caseCode }) };
@@ -246,7 +246,7 @@ type Listener = (state: ApprovalState) => void;
 
 export class ApprovalController {
   readonly texts: ApprovalTexts;
-  private readonly client: TouchQueWeb;
+  private readonly client: TouchqueWeb;
   private readonly options: ApprovalOptions;
   private state: ApprovalState = CLOSED;
   private readonly listeners = new Set<Listener>();
@@ -256,10 +256,10 @@ export class ApprovalController {
   private closeTimer: ReturnType<typeof setTimeout> | undefined;
   private codeType: 'qr' | 'totp' = 'qr';
 
-  constructor(config: TouchQueWebConfig, options: ApprovalOptions = {}) {
+  constructor(config: TouchqueWebConfig, options: ApprovalOptions = {}) {
     this.options = options;
     this.texts = mergeTexts(options.texts);
-    this.client = createTouchQueWeb(config);
+    this.client = createTouchqueWeb(config);
     // The passkey step waits for a click in the dialog (Safari needs one).
     this.client.classic2fa.approveWithPasskey = this.approveWithPasskey;
   }
@@ -273,7 +273,7 @@ export class ApprovalController {
   };
 
   /**
-   * fetch() for a route guarded with requireTouchQue (or any TouchQue server
+   * fetch() for a route guarded with requireTouchque (or any Touchque server
    * SDK guard). Shows the dialog while the user approves and resolves with
    * your route's response. A refusal resolves with the final 4xx and leaves
    * the error on screen until closed. Closing the dialog while waiting
@@ -297,7 +297,7 @@ export class ApprovalController {
   /**
    * Classic push sign-in through your relay (`classic2fa.login`), in the
    * dialog. Resolves once approved; a refusal rejects with
-   * `TouchQueWebAPIError` and stays on screen until closed.
+   * `TouchqueWebAPIError` and stays on screen until closed.
    */
   login = async (input: { externalUsername?: string } = {}): Promise<ClassicLoginResult> => {
     const signal = this.begin();
@@ -515,6 +515,6 @@ export function approvalTimeLeft(expiresAt: string | null | undefined, now = Dat
 }
 
 /** The headless approval dialog. Render its state with `<touchque-approval>`, `@touchque/react`, or your own UI. */
-export function createApproval(config: TouchQueWebConfig, options: ApprovalOptions = {}): ApprovalController {
+export function createApproval(config: TouchqueWebConfig, options: ApprovalOptions = {}): ApprovalController {
   return new ApprovalController(config, options);
 }

@@ -1,6 +1,6 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest';
 import { OfflineSign, normalizeOfflineCode, formatOfflineCodeInput } from './offline';
-import { TouchQueWebAPIError } from './errors';
+import { TouchqueWebAPIError } from './errors';
 import type { RelayHttp } from './http';
 
 const paths = { offlineChallenge: '/offline/challenge', offlineVerify: '/offline/verify', offlineTotp: '/offline/totp' };
@@ -37,10 +37,10 @@ describe('OfflineSign', () => {
   test('a wrong code resolves { approved:false, reason, attemptsLeft } instead of throwing; real errors still throw', async () => {
     const http = fakeHttp();
     const o = new OfflineSign(http, paths);
-    (http.post as any).mockRejectedValueOnce(new TouchQueWebAPIError(401, { approved: false, reason: 'invalid_code', attemptsLeft: 4 }));
+    (http.post as any).mockRejectedValueOnce(new TouchqueWebAPIError(401, { approved: false, reason: 'invalid_code', attemptsLeft: 4 }));
     expect(await o.verify({ challengeId: 'c1', code: 'AAAAAAA' })).toEqual({ approved: false, reason: 'invalid_code', attemptsLeft: 4 });
-    (http.post as any).mockRejectedValueOnce(new TouchQueWebAPIError(500, { error: 'boom' }));
-    await expect(o.verify({ challengeId: 'c1', code: 'AAAAAAA' })).rejects.toBeInstanceOf(TouchQueWebAPIError);
+    (http.post as any).mockRejectedValueOnce(new TouchqueWebAPIError(500, { error: 'boom' }));
+    await expect(o.verify({ challengeId: 'c1', code: 'AAAAAAA' })).rejects.toBeInstanceOf(TouchqueWebAPIError);
     (http.post as any).mockRejectedValueOnce(new TypeError('Failed to fetch'));
     await expect(o.verify({ challengeId: 'c1', code: 'AAAAAAA' })).rejects.toThrow('Failed to fetch');
   });

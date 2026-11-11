@@ -1,5 +1,5 @@
 // Behavioral biometrics widget — the one call in this SDK that goes directly
-// from the browser to TouchQue. It is gated by a per-request `telemetryToken`
+// from the browser to Touchque. It is gated by a per-request `telemetryToken`
 // that the partner's own backend mints server-side (POST /login/request with
 // TenantPolicy.behavioralBiometricsEnabled) — the browser never holds the
 // partner's API key.
@@ -21,12 +21,12 @@ export interface AttachBehavioralOptions {
   telemetryToken: string;
   /** The pending login request id this telemetry belongs to. Required. */
   requestId: string;
-  /** TouchQue API base URL, e.g. `https://api.touchque.com`. */
+  /** Touchque API base URL, e.g. `https://api.touchque.com`. */
   apiBaseUrl: string;
   /**
    * Opt in to Device risk on this page (bigger privacy footprint): the
    * telemetry carries the page's device report (`deviceRisk.collect`), which
-   * TouchQue identifies as a visitor of your workspace. Only used when the
+   * Touchque identifies as a visitor of your workspace. Only used when the
    * workspace turned Device risk on; disclose it in your privacy notice.
    */
   collectDeviceFingerprint?: boolean;
@@ -41,7 +41,7 @@ export interface BehavioralHandle {
   stop(): void;
   /** Zero the accumulated metrics without detaching. */
   reset(): void;
-  /** Send the current metrics to TouchQue. Best-effort, never throws. */
+  /** Send the current metrics to Touchque. Best-effort, never throws. */
   submit(): Promise<void>;
 }
 
@@ -66,7 +66,7 @@ export function attachBehavioral(
   // A relative or missing base would post to the partner's own site and be
   // lost silently (R1-04).
   if (!/^https?:\/\/[^/]/i.test(apiBaseUrl)) {
-    throw new Error('attachBehavioral: apiBaseUrl must be the absolute TouchQue API URL, e.g. https://api.touchque.com');
+    throw new Error('attachBehavioral: apiBaseUrl must be the absolute Touchque API URL, e.g. https://api.touchque.com');
   }
   const fetchImpl = (options.fetch ?? (typeof fetch !== 'undefined' ? fetch : undefined));
   if (!fetchImpl) {

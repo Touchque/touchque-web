@@ -1,11 +1,11 @@
-// Silent sign-ins end to end against the shared fake TouchQue API
+// Silent sign-ins end to end against the shared fake Touchque API
 // (testing/fake-touchque-api.mjs): this package's proofs, passed through a
-// server untouched, are what TouchQue reads to know a browser.
+// server untouched, are what Touchque reads to know a browser.
 import { describe, test, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash, createHmac, randomBytes, verify, webcrypto } from 'node:crypto';
 import { resolve } from 'node:path';
-import { createTouchQueWeb, createBrowserKey, browserKeyThumbprint, browserProofMessage, type BrowserKeyStore, type BrowserProof, type Step } from './index';
+import { createTouchqueWeb, createBrowserKey, browserKeyThumbprint, browserProofMessage, type BrowserKeyStore, type BrowserProof, type Step } from './index';
 
 const USER = 'jane@acme.com';
 let fake: ChildProcess;
@@ -48,8 +48,8 @@ async function api(method: string, path: string, body?: unknown) {
 const reply = (status: number, body: unknown) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 
 /**
- * Stands in for your server with a TouchQue server SDK and `silentSignIn: true`
- * on the classic POST /login route: X-TouchQue-Browser goes to TouchQue as is.
+ * Stands in for your server with a Touchque server SDK and `silentSignIn: true`
+ * on the classic POST /login route: X-Touchque-Browser goes to Touchque as is.
  */
 async function yourServer(_input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
@@ -81,9 +81,9 @@ const decode = (header: string): BrowserProof => JSON.parse(Buffer.from(header, 
 describe('silent sign-ins against the shared fake API', () => {
   test('the first approval makes this browser known; the next sign-in skips the phone', async () => {
     const key = createBrowserKey({ store: memoryStore(), crypto: webcrypto as unknown as Crypto });
-    const tq = createTouchQueWeb({ baseUrl: 'https://app.example.com', fetch: yourServer as typeof fetch, browserKey: key });
+    const tq = createTouchqueWeb({ baseUrl: 'https://app.example.com', fetch: yourServer as typeof fetch, browserKey: key });
 
-    // 1. A new browser: TouchQue asks, the push carries the proof, the user approves on the phone.
+    // 1. A new browser: Touchque asks, the push carries the proof, the user approves on the phone.
     const steps: Step[] = [];
     let approved = false;
     const first = await tq.classic2fa.login({
@@ -105,13 +105,13 @@ describe('silent sign-ins against the shared fake API', () => {
       { key: proof.jwk as unknown as webcrypto.JsonWebKey, format: 'jwk', dsaEncoding: 'ieee-p1363' }, Buffer.from(proof.sig, 'base64url'),
     )).toBe(true);
 
-    // TouchQue lists the browser under the thumbprint this browser computes for itself.
+    // Touchque lists the browser under the thumbprint this browser computes for itself.
     const { body: listed } = await api('GET', `/risk/browsers?externalUsername=${encodeURIComponent(USER)}`);
     expect(listed.browsers).toHaveLength(1);
     expect(listed.browsers[0]).toMatchObject({ thumbprint: await key.thumbprint(), lastMfaMethod: 'push' });
     expect(listed.browsers[0].thumbprint).toBe(await browserKeyThumbprint(proof.jwk, webcrypto.subtle as unknown as SubtleCrypto));
 
-    // 2. Nothing new: TouchQue answers prompt:false, the guarded request goes through with no push.
+    // 2. Nothing new: Touchque answers prompt:false, the guarded request goes through with no push.
     await control('/__test/opts', { silent: true });
     const mark = (await calls()).length;
     const res = await tq.fetch('https://app.example.com/login', { method: 'POST' });
@@ -125,7 +125,7 @@ describe('silent sign-ins against the shared fake API', () => {
   });
 
   test('without a usable key the sign-in asks the phone as before', async () => {
-    const tq = createTouchQueWeb({ baseUrl: 'https://app.example.com', fetch: yourServer as typeof fetch, browserKey: true }); // jsdom: no IndexedDB
+    const tq = createTouchqueWeb({ baseUrl: 'https://app.example.com', fetch: yourServer as typeof fetch, browserKey: true }); // jsdom: no IndexedDB
     await control('/__test/opts', { silent: true });
     let approved = false;
     const result = await tq.classic2fa.login({

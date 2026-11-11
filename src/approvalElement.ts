@@ -1,8 +1,8 @@
 // <touchque-approval>: the drop-in approval dialog, as a framework-free web
 // component.
 //
-//   import { defineTouchQueApproval } from '@touchque/web';
-//   defineTouchQueApproval();
+//   import { defineTouchqueApproval } from '@touchque/web';
+//   defineTouchqueApproval();
 //
 //   <touchque-approval base-url="/touchque" credentials="include"></touchque-approval>
 //
@@ -18,7 +18,7 @@
 // Attributes: base-url (where touchqueRouter or your relay is mounted),
 // credentials ('include' for a cookie session on another origin), theme
 // ('light' default, 'dark', 'auto'). Properties: config (a full
-// TouchQueWebConfig, wins over the attributes), options ({ texts,
+// TouchqueWebConfig, wins over the attributes), options ({ texts,
 // pollIntervalMs, telemetry, approvedMs }), approval (the controller).
 // Events (bubbling, composed): touchque-step { step }, touchque-approved,
 // touchque-error { error }, touchque-close.
@@ -27,7 +27,7 @@ import { ApprovalController, approvalAttribution, approvalTimeLeft, isPngDataUrl
 import type { ApprovalOptions, ApprovalState, ApprovalTexts } from './approval';
 import { formatOfflineCodeInput } from './offline';
 import { APPROVAL_STYLES } from './approvalStyles';
-import type { TouchQueWebConfig } from './types';
+import type { TouchqueWebConfig } from './types';
 
 const SVG = (body: string) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 export const APPROVAL_ICONS = {
@@ -268,11 +268,11 @@ function buildScreen(state: ApprovalState, c: ApprovalController, titleId: strin
 let instances = 0;
 
 function createElementClass(): CustomElementConstructor {
-  return class TouchQueApprovalElement extends HTMLElement {
+  return class TouchqueApprovalElement extends HTMLElement {
     static get observedAttributes() { return ['base-url', 'credentials', 'theme']; }
 
     private controller: ApprovalController | null = null;
-    private configValue: TouchQueWebConfig | null = null;
+    private configValue: TouchqueWebConfig | null = null;
     private optionsValue: ApprovalOptions = {};
     private unsubscribe: (() => void) | null = null;
     private readonly dialog: HTMLDialogElement;
@@ -306,8 +306,8 @@ function createElementClass(): CustomElementConstructor {
     }
 
     /** A full `@touchque/web` config; wins over the base-url / credentials attributes. */
-    get config(): TouchQueWebConfig | null { return this.configValue; }
-    set config(value: TouchQueWebConfig | null) { this.configValue = value; this.reset(); }
+    get config(): TouchqueWebConfig | null { return this.configValue; }
+    set config(value: TouchqueWebConfig | null) { this.configValue = value; this.reset(); }
 
     /** `{ texts, pollIntervalMs, telemetry, approvedMs }` */
     get options(): ApprovalOptions { return this.optionsValue; }
@@ -408,15 +408,15 @@ function createElementClass(): CustomElementConstructor {
  * once and during server rendering (it does nothing without
  * `customElements`).
  */
-export function defineTouchQueApproval(tagName = 'touchque-approval'): void {
+export function defineTouchqueApproval(tagName = 'touchque-approval'): void {
   if (typeof window === 'undefined' || typeof customElements === 'undefined' || typeof HTMLElement === 'undefined') return;
   if (customElements.get(tagName)) return;
   customElements.define(tagName, createElementClass());
 }
 
-/** The element's public surface, for TypeScript: `document.querySelector('touchque-approval') as TouchQueApprovalElement`. */
-export interface TouchQueApprovalElement extends HTMLElement {
-  config: TouchQueWebConfig | null;
+/** The element's public surface, for TypeScript: `document.querySelector('touchque-approval') as TouchqueApprovalElement`. */
+export interface TouchqueApprovalElement extends HTMLElement {
+  config: TouchqueWebConfig | null;
   options: ApprovalOptions;
   readonly approval: ApprovalController;
   fetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response>;

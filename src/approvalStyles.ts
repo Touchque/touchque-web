@@ -1,5 +1,5 @@
 // The approval dialog's stylesheet, shared by `<touchque-approval>` (inside
-// its shadow root) and `@touchque/react`'s `<TouchQueApproval>` (as a
+// its shadow root) and `@touchque/react`'s `<TouchqueApproval>` (as a
 // <style> next to the dialog). Every selector is under `.tq-approval`, so in
 // a page's light DOM it touches nothing else.
 //

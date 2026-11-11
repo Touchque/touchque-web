@@ -10,8 +10,8 @@ vi.mock('@simplewebauthn/browser', () => ({
   WebAuthnAbortService: { cancelCeremony: vi.fn(), createNewAbortSignal: vi.fn() },
 }));
 
-import { createApproval, defineTouchQueApproval, approvalTimeLeft, approvalAttribution, DEFAULT_APPROVAL_TEXTS, PasskeyDismissedError } from './index';
-import type { ApprovalState, TouchQueApprovalElement } from './index';
+import { createApproval, defineTouchqueApproval, approvalTimeLeft, approvalAttribution, DEFAULT_APPROVAL_TEXTS, PasskeyDismissedError } from './index';
+import type { ApprovalState, TouchqueApprovalElement } from './index';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const PNG = 'data:image/png;base64,iVBORw0KGgo=';
@@ -159,7 +159,7 @@ describe('ApprovalController', () => {
     const approval = createApproval({ baseUrl: '/tq', fetch: r.fetch }, { pollIntervalMs: 1 });
     const seen: ApprovalState[] = [];
     approval.subscribe((s) => seen.push(s));
-    await expect(approval.login()).rejects.toMatchObject({ name: 'TouchQueWebAPIError', status: 403 });
+    await expect(approval.login()).rejects.toMatchObject({ name: 'TouchqueWebAPIError', status: 403 });
     expect(seen.find((s) => s.phase === 'enroll')?.enroll).toEqual({ qrCodeDataUrl: PNG, recoveryCodes: ['AAAA-BBBB'] });
     expect(approval.getState().error).toMatchObject({ code: 'risk', message: 'This request was blocked for your security.', caseCode: 'Q2W-3ER' });
     expect(r.calls[0].url).toBe('/tq/login');
@@ -172,11 +172,11 @@ describe('ApprovalController', () => {
     expect(approval.getState().error?.code).toBe('network');
   });
 
-  test('"Secured by TouchQue" can be translated but not removed', () => {
-    expect(approvalAttribution()).toBe('Secured by TouchQue');
-    expect(approvalAttribution({ ...DEFAULT_APPROVAL_TEXTS, securedBy: 'Geschützt durch TouchQue' })).toBe('Geschützt durch TouchQue');
-    expect(approvalAttribution({ ...DEFAULT_APPROVAL_TEXTS, securedBy: 'Secured by Acme' })).toBe('Secured by TouchQue');
-    expect(approvalAttribution({ ...DEFAULT_APPROVAL_TEXTS, securedBy: '' })).toBe('Secured by TouchQue');
+  test('"Secured by Touchque" can be translated but not removed', () => {
+    expect(approvalAttribution()).toBe('Secured by Touchque');
+    expect(approvalAttribution({ ...DEFAULT_APPROVAL_TEXTS, securedBy: 'Geschützt durch Touchque' })).toBe('Geschützt durch Touchque');
+    expect(approvalAttribution({ ...DEFAULT_APPROVAL_TEXTS, securedBy: 'Secured by Acme' })).toBe('Secured by Touchque');
+    expect(approvalAttribution({ ...DEFAULT_APPROVAL_TEXTS, securedBy: '' })).toBe('Secured by Touchque');
   });
 
   test('approvalTimeLeft ignores past and implausible times', () => {
@@ -189,13 +189,13 @@ describe('ApprovalController', () => {
 
 describe('<touchque-approval>', () => {
   test('renders the steps into its dialog and fires events', async () => {
-    defineTouchQueApproval();
-    defineTouchQueApproval(); // twice is fine
+    defineTouchqueApproval();
+    defineTouchqueApproval(); // twice is fine
     const r = relay([
       json({ touchque: { state: 'waiting', requestId: 'r1', number: '83' }, token: 't1' }, 202),
       json({ touchque: { state: 'expired', caseCode: 'Z9Z-9ZZ' } }, 408),
     ]);
-    const node = document.createElement('touchque-approval') as TouchQueApprovalElement;
+    const node = document.createElement('touchque-approval') as TouchqueApprovalElement;
     node.config = { baseUrl: '/tq', fetch: r.fetch };
     node.options = { pollIntervalMs: 1 };
     document.body.append(node);
@@ -209,7 +209,7 @@ describe('<touchque-approval>', () => {
     expect(dialog.textContent).toContain('Not approved');
     expect(dialog.textContent).toContain('The request expired before it was approved. Start again.');
     expect(dialog.querySelector('.tq-case code')?.textContent).toBe('Z9Z-9ZZ');
-    expect(dialog.querySelector('.tq-secured')?.textContent).toBe('Secured by TouchQue');
+    expect(dialog.querySelector('.tq-secured')?.textContent).toBe('Secured by Touchque');
     expect(events).toContain('touchque-step');
     expect(events).toContain('touchque-error');
 
@@ -221,12 +221,12 @@ describe('<touchque-approval>', () => {
 
   test('keeps config and options set before the element was defined', async () => {
     const r = relay([json({ ok: true }, 200)]);
-    const node = document.createElement('touchque-approval-late') as TouchQueApprovalElement;
+    const node = document.createElement('touchque-approval-late') as TouchqueApprovalElement;
     document.body.append(node);
     const config = { baseUrl: '/tq', fetch: r.fetch };
     node.config = config;
     node.options = { pollIntervalMs: 1 };
-    defineTouchQueApproval('touchque-approval-late'); // upgrades the element on the page
+    defineTouchqueApproval('touchque-approval-late'); // upgrades the element on the page
     expect(Object.prototype.hasOwnProperty.call(node, 'config')).toBe(false);
     expect(node.config).toBe(config);
     expect(node.options).toEqual({ pollIntervalMs: 1 });
@@ -235,8 +235,8 @@ describe('<touchque-approval>', () => {
   });
 
   test('needs a base-url', () => {
-    defineTouchQueApproval();
-    const node = document.createElement('touchque-approval') as TouchQueApprovalElement;
+    defineTouchqueApproval();
+    const node = document.createElement('touchque-approval') as TouchqueApprovalElement;
     expect(() => node.approval).toThrow(/base-url/);
     node.setAttribute('base-url', '/tq');
     expect(node.approval).toBeDefined();

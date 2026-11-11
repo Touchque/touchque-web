@@ -1,17 +1,17 @@
-// The browser SDK's own problems: identify could not reach TouchQue, a script tag without
+// The browser SDK's own problems: identify could not reach Touchque, a script tag without
 // its site key, telemetry that did not start. Silent by default: nothing goes to the console
-// unless you pass a logger (setTouchQueLogger(console) while you integrate) or put data-debug
+// unless you pass a logger (setTouchqueLogger(console) while you integrate) or put data-debug
 // on the device.js script tag.
 
 /** What the SDK logs through: `console`, or anything with `warn`. */
-export interface TouchQueWebLogger {
+export interface TouchqueWebLogger {
   warn(message: string): void;
 }
 
-let current: TouchQueWebLogger | null = null;
+let current: TouchqueWebLogger | null = null;
 
 /** Where the SDK reports its own problems; `null` (the default) logs nothing. */
-export function setTouchQueLogger(logger: TouchQueWebLogger | null): void {
+export function setTouchqueLogger(logger: TouchqueWebLogger | null): void {
   current = logger;
 }
 

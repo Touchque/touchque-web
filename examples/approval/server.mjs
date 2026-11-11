@@ -1,6 +1,6 @@
 // The drop-in approval dialog, end to end.
 //
-// Your server guards a route with requireTouchQue and mounts touchqueRouter
+// Your server guards a route with requireTouchque and mounts touchqueRouter
 // (for the passkey step); the page calls the route through
 // <touchque-approval>, which shows each step until the user approves.
 //
@@ -21,14 +21,14 @@ import express from 'express';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { TouchQue, touchqueRouter, requireTouchQue } from '@touchque/node';
+import { Touchque, touchqueRouter, requireTouchque } from '@touchque/node';
 
 const PORT = Number(process.env.PORT || 5207);
 const USER = process.env.DEMO_USER || 'demo@example.com';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 
-const tq = new TouchQue({
+const tq = new Touchque({
   apiKey: process.env.TQ_API_KEY,
   apiSecret: process.env.TQ_API_SECRET,
   ...(process.env.TQ_API_BASE_URL && { baseUrl: process.env.TQ_API_BASE_URL }),
@@ -48,7 +48,7 @@ app.use('/touchque', touchqueRouter(tq, {
 
 // 2. A route that needs the phone's approval. One line.
 app.post('/api/transfer',
-  requireTouchQue('SEND_MONEY', {
+  requireTouchque('SEND_MONEY', {
     client: tq,
     details: (req) => ({ Amount: `${Number(req.body?.amount) || 0} EUR`, To: 'DE89 3704 0044 0532 0130 00' }),
   }),

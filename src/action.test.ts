@@ -55,7 +55,7 @@ describe('touchqueFetch', () => {
     expect(urls.filter((u) => u.includes('/telemetry'))).toEqual(['POST https://api.touchque.com/login/r1/telemetry Bearer tt']);
   });
 
-  test('without the telemetry option nothing is posted to TouchQue', async () => {
+  test('without the telemetry option nothing is posted to Touchque', async () => {
     const s = server([
       json({ touchque: { state: 'waiting', requestId: 'r1', telemetryToken: 'tt' }, token: 't1' }, 202),
       json({ ok: true }, 200),

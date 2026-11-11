@@ -6,26 +6,26 @@
 //   const { visitorId, requestId, confidence } = await deviceRisk.identify({ siteKey, purpose: 'sign_up' });
 //   hidden.value = requestId;   // your server reads the trusted result by requestId
 //
-// identify() sends the page's report to TouchQue with your workspace's public
+// identify() sends the page's report to Touchque with your workspace's public
 // site key (dashboard → Device risk → Settings) and gets back a visitorId of
-// your workspace (another TouchQue customer sees another one for the same
-// browser), the requestId of this identification and how sure TouchQue is.
+// your workspace (another Touchque customer sees another one for the same
+// browser), the requestId of this identification and how sure Touchque is.
 // Never trust them on the page: your server reads the signals and the risk
 // engine's verdict by requestId (deviceRisk.getEvent / deviceRisk.check) or
 // passes the requestId to login.request and risk.check. Every signal only
 // ever asks for more; nothing blocks on its own.
 //
 // collect() is the relay alternative: the encoded report for your server to
-// pass as `deviceRisk` (no call from the page to TouchQue).
+// pass as `deviceRisk` (no call from the page to Touchque).
 //
 // What is sent: coarse traits (OS, browser family and major version, time
 // zone, languages, screen size, cores, memory, touch points, the graphics
 // card's name) and short hashes of how this browser draws text, plays a test
 // sound and which of 25 common fonts it has; plus findings (patched browser
 // functions, a virtual or software graphics card, a headless browser, a
-// private window where the browser lets that be seen). TouchQue keeps none of
+// private window where the browser lets that be seen). Touchque keeps none of
 // the raw values: it stores keyed hashes (a separate key per workspace, so no
-// browser is ever linked across TouchQue customers) and coarse labels, for the
+// browser is ever linked across Touchque customers) and coarse labels, for the
 // 30 to 90 days the workspace sets.
 //
 // Use it only on sign-in, sign-up, password-reset and approval pages, and
@@ -34,10 +34,10 @@
 // (ePrivacy 5(3)); under KVKK, security is a legitimate interest.
 //
 // The report is sealed with this browser's device-bound key (the same
-// non-extractable key as silent sign-ins) where the browser has one: TouchQue
+// non-extractable key as silent sign-ins) where the browser has one: Touchque
 // sees it came whole from a browser holding that key, from this page's
 // origin, once. A seal does not make the traits true: anything on the page
-// can lie to its own report, which is why TouchQue checks them against each
+// can lie to its own report, which is why Touchque checks them against each
 // other, against what it sees on the network, and against visitors it knew.
 
 import { audioSignature, canvasSignature, digestHex, installedFonts, readOrCreateDeviceId, webglRenderer } from './behavioral/fingerprint';
@@ -51,7 +51,7 @@ export const DEVICE_RISK_PURPOSES: readonly DeviceRiskPurpose[] = ['sign_in', 's
 
 /** The form field (or header) a report travels in from the browser to your server. */
 export const DEVICE_RISK_FIELD = 'deviceRisk';
-export const DEVICE_RISK_HEADER = 'X-TouchQue-Device';
+export const DEVICE_RISK_HEADER = 'X-Touchque-Device';
 
 /** Coarse traits. Raw here, never stored raw: the server keeps keyed hashes and coarse labels. */
 export interface DeviceRiskTraits {
@@ -145,13 +145,13 @@ export interface DeviceRiskCollectOptions {
 export interface DeviceRiskIdentifyOptions extends DeviceRiskCollectOptions {
   /** Your workspace's public site key (`tqpk_…`, dashboard → Device risk → Settings). */
   siteKey: string;
-  /** TouchQue's API, default `https://api.touchque.com`. */
+  /** Touchque's API, default `https://api.touchque.com`. */
   apiBaseUrl?: string;
   /** Injectable fetch. Default: the global `fetch`. */
   fetch?: typeof fetch;
   /**
    * Identified when the page loads, not when the form is sent (the script
-   * tag does this): TouchQue counts it (a sign-up, a country) when your
+   * tag does this): Touchque counts it (a sign-up, a country) when your
    * server checks it, not per page view.
    */
   pageView?: boolean;
@@ -169,14 +169,14 @@ export interface DeviceRiskIdentification {
 
 export interface DeviceRisk {
   /**
-   * Identifies this browser with TouchQue (your site key, from your own
+   * Identifies this browser with Touchque (your site key, from your own
    * origin): `{ visitorId, requestId, confidence }`, or `null` (never throws)
-   * when TouchQue could not be reached or refused (the reason is logged to
+   * when Touchque could not be reached or refused (the reason is logged to
    * the console). Send `requestId` to your server.
    */
   identify(options: DeviceRiskIdentifyOptions): Promise<DeviceRiskIdentification | null>;
   /**
-   * The encoded report (base64url JSON) for your server to pass to TouchQue
+   * The encoded report (base64url JSON) for your server to pass to Touchque
    * as `deviceRisk` (the relay alternative to identify). Never throws; collects what it can.
    */
   collect(options: DeviceRiskCollectOptions): Promise<string>;
@@ -531,12 +531,12 @@ export function createDeviceRisk(win?: Window): DeviceRisk {
         });
         const out = await res.json().catch(() => null) as Partial<DeviceRiskIdentification> & { code?: string } | null;
         if (!res.ok || !out || typeof out.visitorId !== 'string' || typeof out.requestId !== 'string') {
-          logWarn(`TouchQue deviceRisk.identify: ${out?.code || res.status}`);
+          logWarn(`Touchque deviceRisk.identify: ${out?.code || res.status}`);
           return null;
         }
         return { visitorId: out.visitorId, requestId: out.requestId, confidence: typeof out.confidence === 'number' ? out.confidence : 0 };
       } catch (err) {
-        logWarn(`TouchQue deviceRisk.identify: TouchQue could not be reached (${errorText(err)})`);
+        logWarn(`Touchque deviceRisk.identify: Touchque could not be reached (${errorText(err)})`);
         return null;
       }
     },

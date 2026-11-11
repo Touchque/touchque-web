@@ -2,13 +2,13 @@ import type { BrowserKey } from './browserKey';
 
 /**
  * The relay endpoint paths on the *partner's own backend*. The browser SDK
- * never talks to TouchQue directly for passkey ceremonies — the partner
- * backend holds the API key and relays to TouchQue.
+ * never talks to Touchque directly for passkey ceremonies — the partner
+ * backend holds the API key and relays to Touchque.
  *
  * Every path is appended to `baseUrl`. Override any subset; the rest keep
  * their defaults.
  */
-export interface TouchQuePaths {
+export interface TouchquePaths {
   /** POST — returns `PublicKeyCredentialCreationOptionsJSON` (at the top level). */
   registerOptions: string;
   /** POST — body `{ response, ...extra }`; returns `{ verified, credentialId }`. */
@@ -39,11 +39,11 @@ export interface TouchQuePaths {
   offlineTotp: string;
 }
 
-export interface TouchQueWebConfig {
+export interface TouchqueWebConfig {
   /** Base URL of the partner's own relay backend, e.g. `https://api.example.com`. */
   baseUrl: string;
   /** Override any subset of the relay paths. */
-  paths?: Partial<TouchQuePaths>;
+  paths?: Partial<TouchquePaths>;
   /**
    * Whether the SDK's relay requests send credentials (cookies). Use
    * `'include'` when the relay authenticates the browser with a cookie
@@ -56,7 +56,7 @@ export interface TouchQueWebConfig {
   fetch?: typeof fetch;
   /**
    * Silent sign-ins (server SDKs 3.5.0 with `silentSignIn`). `true` sends a
-   * fresh proof of this browser's device-bound key (`X-TouchQue-Browser`)
+   * fresh proof of this browser's device-bound key (`X-Touchque-Browser`)
    * with guarded requests (`fetch`) and the classic 2FA login: the user's
    * approval makes the browser known, and a later sign-in from it skips the
    * phone when nothing about it is new. Pass a key from `createBrowserKey()`

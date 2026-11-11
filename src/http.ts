@@ -1,5 +1,5 @@
-import type { TouchQueWebConfig } from './types';
-import { touchqueFetch, TouchQueFetchOptions } from './action';
+import type { TouchqueWebConfig } from './types';
+import { touchqueFetch, TouchqueFetchOptions } from './action';
 import {
   PasskeyDisabledError,
   PasskeyNotRegisteredError,
@@ -17,23 +17,23 @@ export class RelayHttp {
   private readonly headers: Record<string, string>;
   private readonly fetchImpl: typeof fetch;
 
-  constructor(config: TouchQueWebConfig) {
+  constructor(config: TouchqueWebConfig) {
     if (!config.baseUrl) {
-      throw new Error('createTouchQueWeb: `baseUrl` is required.');
+      throw new Error('createTouchqueWeb: `baseUrl` is required.');
     }
     this.baseUrl = config.baseUrl.replace(/\/+$/, '');
     this.credentials = config.credentials ?? 'same-origin';
     this.headers = config.headers ?? {};
     const f = config.fetch ?? (typeof fetch !== 'undefined' ? fetch : undefined);
     if (!f) {
-      throw new Error('createTouchQueWeb: no `fetch` available — pass `fetch` in the config.');
+      throw new Error('createTouchqueWeb: no `fetch` available — pass `fetch` in the config.');
     }
     // Bind so a passed-in global fetch keeps its `this`.
     this.fetchImpl = f.bind(globalThis);
   }
 
-  /** Step-up request to a relay route (two-phase TouchQue contract); resolves with the final Response. */
-  stepUp(path: string, body: unknown, options: TouchQueFetchOptions = {}): Promise<Response> {
+  /** Step-up request to a relay route (two-phase Touchque contract); resolves with the final Response. */
+  stepUp(path: string, body: unknown, options: TouchqueFetchOptions = {}): Promise<Response> {
     return touchqueFetch(this.baseUrl + path, {
       method: 'POST',
       credentials: this.credentials,

@@ -2,7 +2,7 @@
 // The one-line install of Device risk: a script tag on your sign-in, sign-up,
 // password-reset or approval page, and one line on your server.
 //
-//   <script src="https://cdn.touchque.com/device/v1.6.0/device.js" data-site-key="tqpk_…" data-purpose="sign_in"
+//   <script src="https://cdn.touchque.com/device/v2.0.0/script.js" data-site-key="tqpk_…" data-purpose="sign_in"
 //           integrity="sha384-…" crossorigin="anonymous" async></script>
 //
 //   const verdict = await tq.deviceRisk.check(req.body.touchque_request_id, { event: 'sign_in', externalUsername });
@@ -11,7 +11,7 @@
 // and puts the requestId into a hidden `touchque_request_id` field of every
 // form on the page, forms added later included. A form's own
 // `data-touchque-purpose` attribute wins over the tag's `data-purpose`
-// (default sign_in). TouchQue accepts an identification for 15 minutes and
+// (default sign_in). Touchque accepts an identification for 15 minutes and
 // for one account: the tag takes a new one after 10 minutes (when the page
 // is visible again, for a tab left open) and a second after each submit (a
 // single-page app's next attempt may be another account).
@@ -20,16 +20,16 @@
 // the page to the field, after the requestId and a dot: 18 characters of
 // counts (pointerSummary.ts: presses on a pointer that jumped there, how long
 // presses and taps lasted, how straight long strokes were), never a position
-// or a path. Your server passes the field as it is; TouchQue's risk engine
+// or a path. Your server passes the field as it is; Touchque's risk engine
 // weighs it (device_pointer_synthetic, only ever a step-up). `data-pointer="off"`
 // on the tag leaves it out.
 //
-// Single-page apps read `window.TouchQueDevice`: `ready` (the first
+// Single-page apps read `window.TouchqueDevice`: `ready` (the first
 // identification, or null), `value()` (what to send now: the requestId and
 // the pointer summary), `requestId`, `refresh()`, and the `touchque:device`
 // event on document after each new identification.
 //
-// Nothing on the page is trusted: requestIds are made only by TouchQue's
+// Nothing on the page is trusted: requestIds are made only by Touchque's
 // server, used once, bound to your site's origin and to 15 minutes, and your
 // server reads the verdict by requestId (the risk engine decides). A page
 // without the tag, or with it blocked (ad blockers do that to honest people
@@ -38,7 +38,7 @@
 
 import { createDeviceRisk, DEVICE_RISK_PURPOSES } from './deviceRisk';
 import type { DeviceRisk, DeviceRiskIdentification, DeviceRiskPurpose } from './deviceRisk';
-import { logWarn, errorText, setTouchQueLogger } from './log';
+import { logWarn, errorText, setTouchqueLogger } from './log';
 import { startPointerSummary } from './pointerSummary';
 import type { PointerSummaryProbe } from './pointerSummary';
 
@@ -48,25 +48,25 @@ export const REQUEST_ID_FIELD = 'touchque_request_id';
 export const FORM_PURPOSE_ATTRIBUTE = 'data-touchque-purpose';
 /** The event on document after each new identification. */
 export const DEVICE_EVENT = 'touchque:device';
-/** TouchQue accepts an identification for 15 minutes: a new one after 10. */
+/** Touchque accepts an identification for 15 minutes: a new one after 10. */
 export const REFRESH_AFTER_MS = 10 * 60 * 1000;
 /** After a submit, a new identification for the next attempt (a single-page app). */
 export const AFTER_SUBMIT_MS = 1000;
-export const DEVICE_TAG_VERSION = '1.6.0';
+export const DEVICE_TAG_VERSION = '2.0.0';
 
 export interface DeviceRiskTagOptions {
   /** Your workspace's public site key (`tqpk_…`, dashboard → Device risk → Settings). */
   siteKey: string;
   /** The page, for forms without `data-touchque-purpose`. Default `sign_in`. */
   purpose?: DeviceRiskPurpose;
-  /** TouchQue's API, default `https://api.touchque.com`. */
+  /** Touchque's API, default `https://api.touchque.com`. */
   apiBaseUrl?: string;
   /** Send how the pointer and the fingers moved (counts only). Default true. */
   pointer?: boolean;
 }
 
-export interface TouchQueDevice {
-  /** The first identification for the page's purpose, or null when TouchQue could not be reached or refused (logged to the console). */
+export interface TouchqueDevice {
+  /** The first identification for the page's purpose, or null when Touchque could not be reached or refused (logged to the console). */
   readonly ready: Promise<DeviceRiskIdentification | null>;
   /** The current requestId for the page's purpose; null until ready, or after a failure. */
   readonly requestId: string | null;
@@ -101,7 +101,7 @@ export interface DeviceRiskTagDeps {
 const isPurpose = (v: unknown): v is DeviceRiskPurpose => DEVICE_RISK_PURPOSES.includes(v as DeviceRiskPurpose);
 
 /** Starts the tag's work on this page. Never throws. */
-export function installDeviceRiskTag(options: DeviceRiskTagOptions, deps: DeviceRiskTagDeps = {}): TouchQueDevice {
+export function installDeviceRiskTag(options: DeviceRiskTagOptions, deps: DeviceRiskTagDeps = {}): TouchqueDevice {
   const win = deps.win ?? window;
   const doc = win.document;
   const now = deps.now ?? (() => Date.now());
@@ -168,7 +168,7 @@ export function installDeviceRiskTag(options: DeviceRiskTagOptions, deps: Device
     s.pending = risk.identify({ siteKey: options.siteKey, purpose, apiBaseUrl: options.apiBaseUrl, pageView: true })
       .catch((err: unknown) => {
         // A wrong site key or API address: said once, the page goes on.
-        logWarn(`TouchQue device.js: ${errorText(err)}`);
+        logWarn(`Touchque device.js: ${errorText(err)}`);
         return null;
       })
       .then((id) => {
@@ -251,24 +251,24 @@ export function installDeviceRiskTag(options: DeviceRiskTagOptions, deps: Device
 }
 
 /** The tag's own start: reads data-site-key, data-purpose, data-api and data-pointer from its script element. */
-export function installFromScript(script: HTMLScriptElement | null, win: Window = window): TouchQueDevice {
-  const w = win as Window & { TouchQueDevice?: TouchQueDevice };
-  if (w.TouchQueDevice) return w.TouchQueDevice; // the tag twice on one page
+export function installFromScript(script: HTMLScriptElement | null, win: Window = window): TouchqueDevice {
+  const w = win as Window & { TouchqueDevice?: TouchqueDevice };
+  if (w.TouchqueDevice) return w.TouchqueDevice; // the tag twice on one page
   const el = script ?? win.document.querySelector<HTMLScriptElement>('script[data-site-key]');
   const siteKey = el?.getAttribute('data-site-key') || '';
   const purpose = el?.getAttribute('data-purpose') || undefined;
   const apiBaseUrl = el?.getAttribute('data-api') || undefined;
   const pointer = el?.getAttribute('data-pointer') !== 'off';
-  if (el?.hasAttribute('data-debug') && typeof console !== 'undefined') setTouchQueLogger(console);
+  if (el?.hasAttribute('data-debug') && typeof console !== 'undefined') setTouchqueLogger(console);
   const device = siteKey
     ? installDeviceRiskTag({ siteKey, purpose: purpose as DeviceRiskPurpose | undefined, apiBaseUrl, pointer }, { win })
     : unconfigured();
-  w.TouchQueDevice = device;
+  w.TouchqueDevice = device;
   return device;
 }
 
-function unconfigured(): TouchQueDevice {
-  logWarn('TouchQue device.js: data-site-key is missing on the script tag (dashboard → Device risk → Settings).');
+function unconfigured(): TouchqueDevice {
+  logWarn('Touchque device.js: data-site-key is missing on the script tag (dashboard → Device risk → Settings).');
   return {
     ready: Promise.resolve(null),
     requestId: null,

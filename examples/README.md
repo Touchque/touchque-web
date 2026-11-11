@@ -4,7 +4,7 @@ A single Node process that:
 
 - serves the static page `index.html` and this package's built `dist/`,
 - acts as the **relay backend**: exposes the default `/passkey/*` routes and
-  forwards each to the TouchQue Authenticator API with `@touchque/node`.
+  forwards each to the Touchque Authenticator API with `@touchque/node`.
 
 ## Run
 
@@ -13,7 +13,7 @@ A single Node process that:
 npm run build
 
 # point it at a running authenticator backend (default http://localhost:5001)
-# and give it API credentials from your TouchQue dashboard
+# and give it API credentials from your Touchque dashboard
 export TQ_API_KEY=tq_xxx
 export TQ_API_SECRET=xxx
 # export TQ_API_BASE_URL=http://localhost:5001   # optional
@@ -36,7 +36,7 @@ authenticator environment".
 
 ## Approval dialog (`approval/`)
 
-`<touchque-approval>` in front of a route guarded with `requireTouchQue('SEND_MONEY')`, with
+`<touchque-approval>` in front of a route guarded with `requireTouchque('SEND_MONEY')`, with
 `touchqueRouter` mounted for the passkey step. Express + `@touchque/node` + this package.
 
 ```bash

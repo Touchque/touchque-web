@@ -1,7 +1,7 @@
 // Minimal relay backend for the @touchque/web example.
 //
 // It exposes the default /passkey/* routes the browser SDK calls and forwards
-// each to the TouchQue Authenticator API with @touchque/node. It also serves
+// each to the Touchque Authenticator API with @touchque/node. It also serves
 // the static example page and this package's built dist/, so the whole demo
 // is one process.
 //
@@ -15,17 +15,17 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { TouchQue } = require('@touchque/node');
+const { Touchque } = require('@touchque/node');
 
 const PORT = process.env.PORT || 3999;
 const AUTH_BASE = process.env.TQ_API_BASE_URL || 'http://localhost:5001';
 
 if (!process.env.TQ_API_KEY || !process.env.TQ_API_SECRET) {
-  console.error('Set TQ_API_KEY and TQ_API_SECRET (from your TouchQue dashboard) before running.');
+  console.error('Set TQ_API_KEY and TQ_API_SECRET (from your Touchque dashboard) before running.');
   process.exit(1);
 }
 
-const tq = new TouchQue({
+const tq = new Touchque({
   apiKey: process.env.TQ_API_KEY,
   apiSecret: process.env.TQ_API_SECRET,
   baseUrl: AUTH_BASE,

@@ -1,5 +1,5 @@
 // src/hostedLogin.ts
-// TouchQue Login for single-page apps: sign in on your tenant's hosted pages
+// Touchque Login for single-page apps: sign in on your tenant's hosted pages
 // (acme.login.touchque.com or your own domain) with PKCE, and get tokens for
 // your API in the browser.
 //

@@ -76,7 +76,7 @@ describe('ClassicTwoFactor', () => {
     expect(JSON.parse(init.body)).toEqual({ externalUsername: 'user@example.com' });
   });
 
-  test('login() throws TouchQueWebAPIError on a non-2xx relay response (e.g. rejected)', async () => {
+  test('login() throws TouchqueWebAPIError on a non-2xx relay response (e.g. rejected)', async () => {
     const fetchImpl = fetchJson({ error: '2FA_REJECTED' }, 403);
     const c = client(fetchImpl);
     await expect(c.login({ externalUsername: 'user@example.com' })).rejects.toMatchObject({ status: 403 });
@@ -93,8 +93,8 @@ describe('ClassicTwoFactor — phishing-resistant policy', () => {
   });
 
   test('other errors are passed through unchanged', async () => {
-    const { TouchQueWebAPIError } = await import('./errors');
+    const { TouchqueWebAPIError } = await import('./errors');
     const tq = client(fetchJson({ error: '2FA_REJECTED' }, 403) as unknown as typeof fetch);
-    expect(await tq.login().catch((e) => e)).toBeInstanceOf(TouchQueWebAPIError);
+    expect(await tq.login().catch((e) => e)).toBeInstanceOf(TouchqueWebAPIError);
   });
 });

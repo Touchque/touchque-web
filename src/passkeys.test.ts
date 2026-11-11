@@ -16,12 +16,12 @@ vi.mock('@simplewebauthn/browser', () => ({
   platformAuthenticatorIsAvailable,
 }));
 
-import { createTouchQueWeb } from './index';
+import { createTouchqueWeb } from './index';
 import {
   PasskeyDismissedError,
   PasskeyNotRegisteredError,
   PasskeyDisabledError,
-  TouchQueWebAPIError,
+  TouchqueWebAPIError,
 } from './errors';
 
 /** Build a fetch stub that returns queued responses in order. */
@@ -44,21 +44,21 @@ beforeEach(() => {
   browserSupportsWebAuthn.mockReturnValue(true);
 });
 
-describe('createTouchQueWeb', () => {
+describe('createTouchqueWeb', () => {
   test('throws when baseUrl is missing', () => {
-    expect(() => createTouchQueWeb({ baseUrl: '' })).toThrow(/baseUrl/);
+    expect(() => createTouchqueWeb({ baseUrl: '' })).toThrow(/baseUrl/);
   });
 
   test('trims a trailing slash from baseUrl', async () => {
     const { fn, calls } = fetchStub([{ body: {} }, { body: {} }]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://api.example.com/', fetch: fn });
+    const tq = createTouchqueWeb({ baseUrl: 'https://api.example.com/', fetch: fn });
     startRegistration.mockResolvedValue({ id: 'r' });
     await tq.passkeys.register();
     expect(calls[0].url).toBe('https://api.example.com/passkey/register/options');
   });
 
   test('exposes support helpers', () => {
-    const tq = createTouchQueWeb({ baseUrl: 'https://x', fetch: vi.fn() as any });
+    const tq = createTouchqueWeb({ baseUrl: 'https://x', fetch: vi.fn() as any });
     expect(tq.isPasskeySupported()).toBe(true);
   });
 });
@@ -69,7 +69,7 @@ describe('passkeys.register', () => {
       { body: { challenge: 'c', rp: {} } }, // registerOptions (top-level options)
       { body: { verified: true, credentialId: 'cred_1' } }, // registerVerify
     ]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://api.example.com', fetch: fn });
+    const tq = createTouchqueWeb({ baseUrl: 'https://api.example.com', fetch: fn });
     startRegistration.mockResolvedValue({ id: 'attResp' });
 
     const result = await tq.passkeys.register({ label: 'MacBook' });
@@ -88,7 +88,7 @@ describe('passkeys.register', () => {
       { body: { challenge: 'c', rp: {} } },
       { body: { verified: true, credentialId: 'cred_2' } },
     ]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://api.example.com', fetch: fn });
+    const tq = createTouchqueWeb({ baseUrl: 'https://api.example.com', fetch: fn });
     startRegistration.mockResolvedValue({ id: 'attResp' });
     const numbers: Array<string | undefined> = [];
     const result = await tq.passkeys.register({}, { onStep: (step) => numbers.push(step.number), pollIntervalMs: 1 });
@@ -99,14 +99,14 @@ describe('passkeys.register', () => {
 
   test('a rejected approval throws and never opens the passkey prompt', async () => {
     const { fn } = fetchStub([{ status: 403, body: { touchque: { state: 'rejected' } } }]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://api.example.com', fetch: fn });
-    await expect(tq.passkeys.register()).rejects.toBeInstanceOf(TouchQueWebAPIError);
+    const tq = createTouchqueWeb({ baseUrl: 'https://api.example.com', fetch: fn });
+    await expect(tq.passkeys.register()).rejects.toBeInstanceOf(TouchqueWebAPIError);
     expect(startRegistration).not.toHaveBeenCalled();
   });
 
   test('maps a dismissed prompt to PasskeyDismissedError', async () => {
     const { fn } = fetchStub([{ body: { challenge: 'c' } }]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://api.example.com', fetch: fn });
+    const tq = createTouchqueWeb({ baseUrl: 'https://api.example.com', fetch: fn });
     startRegistration.mockRejectedValue(Object.assign(new Error('cancelled'), { name: 'NotAllowedError' }));
 
     await expect(tq.passkeys.register()).rejects.toBeInstanceOf(PasskeyDismissedError);
@@ -119,7 +119,7 @@ describe('passkeys.authenticate', () => {
       { body: { attemptId: 'att_1', options: { challenge: 'c' } } },
       { body: { status: 'success', redirect_url: 'https://app/cb?code=x' } },
     ]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://api.example.com', fetch: fn });
+    const tq = createTouchqueWeb({ baseUrl: 'https://api.example.com', fetch: fn });
     startAuthentication.mockResolvedValue({ id: 'asrt' });
 
     const result = await tq.passkeys.authenticate({
@@ -148,7 +148,7 @@ describe('passkeys.authenticate', () => {
       { body: { attemptId: 'att_1', options: {} } },
       { body: { success: false, requiresStepUp: true, riskScore: 0.95 } },
     ]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://x', fetch: fn });
+    const tq = createTouchqueWeb({ baseUrl: 'https://x', fetch: fn });
     startAuthentication.mockResolvedValue({ id: 'a' });
 
     const result = await tq.passkeys.authenticate({ email: 'u@x.com' });
@@ -162,7 +162,7 @@ describe('passkeys.authenticate', () => {
       { body: { attemptId: 'att_1', options: {} } },
       { body: { status: 'pending_2fa', requestId: 'req_1', tempToken: 't' } },
     ]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://x', fetch: fn });
+    const tq = createTouchqueWeb({ baseUrl: 'https://x', fetch: fn });
     startAuthentication.mockResolvedValue({ id: 'a' });
 
     const result = await tq.passkeys.authenticate({ email: 'u@x.com' });
@@ -173,7 +173,7 @@ describe('passkeys.authenticate', () => {
 
   test('404 on options -> PasskeyNotRegisteredError (caller falls back to password)', async () => {
     const { fn } = fetchStub([{ status: 404, body: { error: 'no_passkey_registered' } }]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://x', fetch: fn });
+    const tq = createTouchqueWeb({ baseUrl: 'https://x', fetch: fn });
 
     await expect(tq.passkeys.authenticate({ email: 'u@x.com' })).rejects.toBeInstanceOf(
       PasskeyNotRegisteredError,
@@ -183,7 +183,7 @@ describe('passkeys.authenticate', () => {
 
   test('403 on options -> PasskeyDisabledError', async () => {
     const { fn } = fetchStub([{ status: 403, body: { error: 'passwordless_login_disabled' } }]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://x', fetch: fn });
+    const tq = createTouchqueWeb({ baseUrl: 'https://x', fetch: fn });
 
     await expect(tq.passkeys.authenticate({ email: 'u@x.com' })).rejects.toBeInstanceOf(
       PasskeyDisabledError,
@@ -192,7 +192,7 @@ describe('passkeys.authenticate', () => {
 
   test('a bare 404 / 403 (no body) still maps to the passkey errors', async () => {
     const { fn } = fetchStub([{ status: 404 }, { status: 403 }]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://x', fetch: fn });
+    const tq = createTouchqueWeb({ baseUrl: 'https://x', fetch: fn });
     await expect(tq.passkeys.authenticate({ email: 'u@x.com' })).rejects.toBeInstanceOf(PasskeyNotRegisteredError);
     await expect(tq.passkeys.authenticate({ email: 'u@x.com' })).rejects.toBeInstanceOf(PasskeyDisabledError);
   });
@@ -203,32 +203,32 @@ describe('passkeys.authenticate', () => {
       new Response('Cannot POST /touchque/passkey/authenticate/options', { status: 404, headers: { 'Content-Type': 'text/html' } }),
       new Response(JSON.stringify({ message: 'Missing Authentication Token' }), { status: 403, headers: { 'Content-Type': 'application/json' } }),
     ];
-    const tq = createTouchQueWeb({ baseUrl: 'https://x', fetch: vi.fn(async () => pages.shift()!) as unknown as typeof fetch });
+    const tq = createTouchqueWeb({ baseUrl: 'https://x', fetch: vi.fn(async () => pages.shift()!) as unknown as typeof fetch });
     for (const status of [403, 404, 403]) {
       const err = await tq.passkeys.authenticate({ email: 'u@x.com' }).catch((e) => e);
-      expect(err).toBeInstanceOf(TouchQueWebAPIError);
+      expect(err).toBeInstanceOf(TouchqueWebAPIError);
       expect(err).not.toBeInstanceOf(PasskeyDisabledError);
       expect(err).not.toBeInstanceOf(PasskeyNotRegisteredError);
       expect(err.status).toBe(status);
     }
   });
 
-  test('other non-2xx -> TouchQueWebAPIError carrying status + body', async () => {
+  test('other non-2xx -> TouchqueWebAPIError carrying status + body', async () => {
     const { fn } = fetchStub([{ status: 500, body: { error: 'boom', message: 'relay down' } }]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://x', fetch: fn });
+    const tq = createTouchqueWeb({ baseUrl: 'https://x', fetch: fn });
 
     const err = await tq.passkeys.authenticate({ email: 'u@x.com' }).catch((e) => e);
-    expect(err).toBeInstanceOf(TouchQueWebAPIError);
+    expect(err).toBeInstanceOf(TouchqueWebAPIError);
     expect(err.status).toBe(500);
     expect(err.body).toEqual({ error: 'boom', message: 'relay down' });
   });
 
   test('a 403 with an unrelated error code is NOT treated as "passwordless disabled"', async () => {
     const { fn } = fetchStub([{ status: 403, body: { error: 'rate_limited', message: 'slow down' } }]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://x', fetch: fn });
+    const tq = createTouchqueWeb({ baseUrl: 'https://x', fetch: fn });
 
     const err = await tq.passkeys.authenticate({ email: 'u@x.com' }).catch((e) => e);
-    expect(err).toBeInstanceOf(TouchQueWebAPIError);
+    expect(err).toBeInstanceOf(TouchqueWebAPIError);
     expect(err).not.toBeInstanceOf(PasskeyDisabledError);
     expect(err.status).toBe(403);
   });
@@ -240,7 +240,7 @@ describe('passkeys.approveLogin', () => {
       { body: { challenge: 'c' } },
       { body: { success: true } },
     ]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://x', fetch: fn });
+    const tq = createTouchqueWeb({ baseUrl: 'https://x', fetch: fn });
     startAuthentication.mockResolvedValue({ id: 'a' });
 
     const result = await tq.passkeys.approveLogin({ requestId: 'req_9' });
@@ -255,7 +255,7 @@ describe('passkeys.approveLogin', () => {
 describe('passkeys.list / remove', () => {
   test('list() returns the credentials array', async () => {
     const { fn, calls } = fetchStub([{ body: { credentials: [{ id: 'c1' }] } }]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://x', fetch: fn });
+    const tq = createTouchqueWeb({ baseUrl: 'https://x', fetch: fn });
 
     const list = await tq.passkeys.list();
 
@@ -266,13 +266,13 @@ describe('passkeys.list / remove', () => {
 
   test('list() tolerates a missing credentials field', async () => {
     const { fn } = fetchStub([{ body: {} }]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://x', fetch: fn });
+    const tq = createTouchqueWeb({ baseUrl: 'https://x', fetch: fn });
     expect(await tq.passkeys.list()).toEqual([]);
   });
 
   test('remove() DELETEs the id url-encoded', async () => {
     const { fn, calls } = fetchStub([{ body: { deleted: true } }]);
-    const tq = createTouchQueWeb({ baseUrl: 'https://x', fetch: fn });
+    const tq = createTouchqueWeb({ baseUrl: 'https://x', fetch: fn });
 
     await tq.passkeys.remove('cred/1 2');
 
@@ -284,11 +284,11 @@ describe('passkeys.list / remove', () => {
 describe('config.credentials', () => {
   test('defaults to same-origin and can be set to include', async () => {
     const a = fetchStub([{ body: { credentials: [] } }]);
-    await createTouchQueWeb({ baseUrl: 'https://x', fetch: a.fn }).passkeys.list();
+    await createTouchqueWeb({ baseUrl: 'https://x', fetch: a.fn }).passkeys.list();
     expect(a.calls[0].init.credentials).toBe('same-origin');
 
     const b = fetchStub([{ body: { credentials: [] } }]);
-    await createTouchQueWeb({ baseUrl: 'https://x', fetch: b.fn, credentials: 'include' }).passkeys.list();
+    await createTouchqueWeb({ baseUrl: 'https://x', fetch: b.fn, credentials: 'include' }).passkeys.list();
     expect(b.calls[0].init.credentials).toBe('include');
   });
 });

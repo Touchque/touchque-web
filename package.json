@@ -1,14 +1,14 @@
 {
   "name": "@touchque/web",
-  "version": "1.6.0",
-  "description": "Browser SDK for TouchQue Authenticator \u2014 passkey ceremonies and behavioral telemetry",
+  "version": "2.0.0",
+  "description": "Browser SDK for Touchque Authenticator — passkey ceremonies and behavioral telemetry",
   "repository": {
     "type": "git",
     "url": "https://github.com/Touchque/touchque-web"
   },
   "homepage": "https://touchque.com",
   "license": "MIT",
-  "author": "TouchQue",
+  "author": "Touchque",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",

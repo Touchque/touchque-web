@@ -9,7 +9,7 @@
 // computed here: never a position, a path, what was pressed or typed, and
 // nothing that tells one person from another. The Device risk tag sends it
 // with the form (after the requestId), startClientSignals inside its
-// signals; TouchQue's risk engine weighs it (device_pointer_synthetic). It
+// signals; Touchque's risk engine weighs it (device_pointer_synthetic). It
 // only ever asks for a step-up, and only when there was movement and it
 // looked made: no movement at all (a keyboard, a screen reader) is never a
 // sign. Voice Control and Switch Control jump the pointer and press like

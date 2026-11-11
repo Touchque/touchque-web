@@ -1,6 +1,6 @@
 // Classic push / number-match 2FA — the companion to passkeys.ts for
 // partners not using WebAuthn. Talks to the same relay backend as the
-// passkey flow (never TouchQue directly); pairs with `touchqueRouter` from
+// passkey flow (never Touchque directly); pairs with `touchqueRouter` from
 // `@touchque/node` by default (`/enroll/start`, `/enroll/status`, `/login`).
 //
 // This replaces the QR-render + poll + cleanup state machine every partner
@@ -8,7 +8,7 @@
 
 import type { RelayHttp } from './http';
 import { EnrollmentTimeoutError, EnrollmentCancelledError, PasskeyRequiredError, webApiError } from './errors';
-import type { Step, StepControls, TouchQueFetchOptions } from './action';
+import type { Step, StepControls, TouchqueFetchOptions } from './action';
 
 export interface ClassicTwoFactorPaths {
   /** POST — starts (or rotates) enrollment. Returns `{ secret, qrCodeDataUrl, ... }`. */
@@ -56,8 +56,8 @@ export interface ClassicLoginOptions {
   onStep?: (step: Step, controls: StepControls) => void;
   signal?: AbortSignal;
   pollIntervalMs?: number;
-  /** Send behavioural signals when the workspace collects them (see TouchQueFetchOptions.telemetry). */
-  telemetry?: TouchQueFetchOptions['telemetry'];
+  /** Send behavioural signals when the workspace collects them (see TouchqueFetchOptions.telemetry). */
+  telemetry?: TouchqueFetchOptions['telemetry'];
 }
 
 function sleep(ms: number): Promise<void> {
@@ -107,8 +107,8 @@ export class ClassicTwoFactor {
    * Classic push sign-in. Resolves once approved; while waiting, `onStep`
    * gets the step to render (show `step.number` when present — the user picks
    * the same number on the phone). A passkey-only policy runs the passkey
-   * approval automatically when the SDK was created with createTouchQueWeb.
-   * Refusals throw `TouchQueWebAPIError` (`.status`, `.body.touchque.state`).
+   * approval automatically when the SDK was created with createTouchqueWeb.
+   * Refusals throw `TouchqueWebAPIError` (`.status`, `.body.touchque.state`).
    */
   async login(input: ClassicLoginOptions = {}): Promise<ClassicLoginResult> {
     const res = await this.http.stepUp(
@@ -127,9 +127,9 @@ export class ClassicTwoFactor {
     throw webApiError(res.status, body, step?.reason || step?.state || body?.error || 'login_failed');
   }
 
-  /** @internal set by createTouchQueWeb so passkey-only policies just work. */
+  /** @internal set by createTouchqueWeb so passkey-only policies just work. */
   approveWithPasskey?: (requestId: string) => Promise<unknown>;
 
-  /** @internal set by createTouchQueWeb with `browserKey: true` (silent sign-ins). */
+  /** @internal set by createTouchqueWeb with `browserKey: true` (silent sign-ins). */
   browserProof?: () => Promise<string | null>;
 }

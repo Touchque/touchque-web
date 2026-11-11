@@ -1,14 +1,14 @@
 // Offline Sign for the browser — approvals that work while the user's PHONE has
-// no internet. Talks to the partner's own relay (never TouchQue directly);
+// no internet. Talks to the partner's own relay (never Touchque directly);
 // pairs with `touchqueRouter` from `@touchque/node` (>= 1.7.0) with zero config.
 //
 // Flow: `challenge()` → show the QR (`renderQr`) → the user scans it with the
-// TouchQue app (offline), approves with Face ID and reads a 7-character code →
+// Touchque app (offline), approves with Face ID and reads a 7-character code →
 // `verify()`. Optionally `verifyTotp()` for the "no camera" fallback (only
 // when `totpAvailable`).
 
 import type { RelayHttp } from './http';
-import { TouchQueWebAPIError } from './errors';
+import { TouchqueWebAPIError } from './errors';
 
 export interface OfflineSignPaths {
   /** POST — body `{ externalUsername }`; returns the challenge + QR. */
@@ -104,7 +104,7 @@ export class OfflineSign {
     if (!/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(challenge.qrDataUrl)) throw new Error('renderQr: qrDataUrl must be a PNG data URL');
     const img = document.createElement('img');
     img.src = challenge.qrDataUrl;
-    img.alt = options.alt ?? 'TouchQue offline sign QR code';
+    img.alt = options.alt ?? 'Touchque offline sign QR code';
     img.width = options.size ?? 280;
     img.height = options.size ?? 280;
     img.style.imageRendering = 'pixelated'; // keep the modules sharp when scaled
@@ -135,7 +135,7 @@ export class OfflineSign {
     try {
       return await call();
     } catch (error) {
-      if (error instanceof TouchQueWebAPIError && NOT_APPROVED.includes(error.status)) {
+      if (error instanceof TouchqueWebAPIError && NOT_APPROVED.includes(error.status)) {
         const body = (error.body ?? {}) as { reason?: string; error?: string; attemptsLeft?: number };
         return { approved: false, reason: body.reason ?? body.error ?? 'not_approved', attemptsLeft: body.attemptsLeft };
       }
