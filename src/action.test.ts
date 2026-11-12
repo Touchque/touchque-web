@@ -112,6 +112,32 @@ describe('touchqueFetch', () => {
     expect(steps.map((x) => x.state)).toEqual(['waiting', 'offline', 'rejected']);
   });
 
+  test('first-time QR: checks without a QR are not passed on while it is up; a new QR is', async () => {
+    const qr = (n: number) => json({ touchque: { state: 'enroll', enroll: { qrCodeDataUrl: `data:QR${n}`, recoveryCodes: [`r${n}`] } }, token: `t${n}` }, 202);
+    const kept = () => json({ touchque: { state: 'enroll', expiresAt: '2026-11-12T13:05:00.000Z' }, token: 'tk' }, 202);
+    const s = server([
+      qr(1), kept(), kept(), qr(2), kept(),
+      json({ touchque: { state: 'waiting', requestId: 'r1', number: '47' }, token: 'tw' }, 202),
+      json({ ok: true }, 200),
+    ]);
+    const steps: Step[] = [];
+    const res = await touchqueFetch('/api/transfer', { method: 'POST' }, { fetch: s.fetch, pollIntervalMs: 1, onStep: (st) => steps.push(st) });
+    expect(res.status).toBe(200);
+    expect(steps.map((x) => x.enroll?.qrCodeDataUrl ?? x.state)).toEqual(['data:QR1', 'data:QR2', 'waiting']);
+    expect(s.seen.map((h) => h.get('x-touchque-token'))).toEqual([null, 't1', 'tk', 'tk', 't2', 'tk', 'tw']);
+  });
+
+  test('an enroll step without a QR is passed on when no QR was shown (a route with enroll: false)', async () => {
+    const s = server([
+      json({ touchque: { state: 'enroll' }, token: 't1' }, 202),
+      json({ touchque: { state: 'enroll' }, token: 't2' }, 202),
+      json({ touchque: { state: 'rejected' } }, 403),
+    ]);
+    const steps: Step[] = [];
+    await touchqueFetch('/x', {}, { fetch: s.fetch, pollIntervalMs: 1, onStep: (st) => steps.push(st) });
+    expect(steps.map((x) => x.state)).toEqual(['enroll', 'enroll', 'rejected']);
+  });
+
   test('passkey_required runs the passkey approval once, then continues', async () => {
     const s = server([
       json({ touchque: { state: 'passkey_required', requestId: 'r9' }, token: 't1' }, 202),
@@ -121,6 +147,22 @@ describe('touchqueFetch', () => {
     const res = await touchqueFetch('/x', {}, { fetch: s.fetch, pollIntervalMs: 1, approveWithPasskey: approve });
     expect(res.status).toBe(200);
     expect(approve).toHaveBeenCalledWith('r9');
+  });
+
+  test('a refusal in the app\'s own error shape: the step comes from its X-Touchque-State / -Reason headers', async () => {
+    const own = (body: unknown, status: number, headers: Record<string, string> = {}) =>
+      new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });
+    const steps: Step[] = [];
+    const refused = server([own('The approval was refused.', 403, { 'X-Touchque-State': 'blocked', 'X-Touchque-Reason': 'geo_policy' })]);
+    const res = await touchqueFetch('/x', {}, { fetch: refused.fetch, onStep: (st) => steps.push(st) });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toBe('The approval was refused.');
+    expect(steps).toEqual([{ state: 'blocked', reason: 'geo_policy' }]);
+    // A route's own error, without the headers (or with a state that is no refusal), is returned as it is.
+    const routes = server([own({ error: 'not_found' }, 404), own(['x'], 409, { 'X-Touchque-State': 'approved' })]);
+    expect((await touchqueFetch('/x', {}, { fetch: routes.fetch, onStep: (st) => steps.push(st) })).status).toBe(404);
+    expect((await touchqueFetch('/x', {}, { fetch: routes.fetch, onStep: (st) => steps.push(st) })).status).toBe(409);
+    expect(steps).toHaveLength(1);
   });
 
   test('a refusal is final: onStep sees it and the response is returned', async () => {

@@ -92,6 +92,8 @@ function qrImage(src: string, alt: string): HTMLImageElement {
 function screenKey(state: ApprovalState, controller: ApprovalController): string {
   if (state.phase === 'offline') return `offline:${controller.codeMode}`;
   if (state.phase === 'waiting') return `waiting:${state.step?.requestId ?? ''}`;
+  // A new first-time QR (the last one expired) is drawn again.
+  if (state.phase === 'enroll') return `enroll:${state.enroll?.qrCodeDataUrl ?? ''}`;
   return state.phase;
 }
 

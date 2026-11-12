@@ -143,6 +143,19 @@ import { BROWSER_PROOF_HEADER } from './browserKey';
 import { logWarn, errorText } from './log';
 
 const TERMINAL: StepState[] = ['approved', 'rejected', 'expired', 'blocked', 'frozen', 'rate_limited'];
+const REFUSALS: StepState[] = ['rejected', 'expired', 'blocked', 'frozen', 'rate_limited'];
+
+/**
+ * A refusal sent in the app's own error shape (server SDKs 5.1 `errorBody`) has
+ * no `touchque` in its body: its `X-Touchque-State` / `X-Touchque-Reason`
+ * headers say which. A route's own error carries neither.
+ */
+function refusalFromHeaders(headers: Headers): Step | undefined {
+  const state = headers.get('X-Touchque-State') as StepState | null;
+  if (!state || !REFUSALS.includes(state)) return undefined;
+  const reason = headers.get('X-Touchque-Reason');
+  return { state, ...(reason && { reason }) };
+}
 
 function abortError(): Error {
   const e = new Error('Touchque approval cancelled');
@@ -159,6 +172,8 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
   let cancelled = false;
   let passkeyTried: string | undefined;
   let lastOfflineId: string | undefined;
+  // The last step handed to onStep was a first-time QR.
+  let enrollQrUp = false;
   let wake: (() => void) | undefined;
   let tracker: BehavioralHandle | undefined;
   let telemetrySent = false;
@@ -223,7 +238,8 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
       // Only a 202 or a refusal carries a step: your route's own response is
       // returned unread, so a stream or a download is never held up.
       const body = res.status === 202 || !res.ok ? await res.clone().json().catch(() => null) : null;
-      const step: Step | undefined = body && typeof body === 'object' && body.touchque && typeof body.touchque.state === 'string' ? body.touchque : undefined;
+      const step: Step | undefined = body && typeof body === 'object' && body.touchque && typeof body.touchque.state === 'string' ? body.touchque
+        : !res.ok ? refusalFromHeaders(res.headers) : undefined;
       if (step?.canary?.url && !canariesSent.has(step.canary.url)) {
         canariesSent.add(step.canary.url);
         sendCanary(step.canary);
@@ -249,7 +265,13 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
       const sameQrStillUp = step.state === 'offline' && !!step.offline && !step.offline.qrDataUrl && step.offline.attemptsLeft === undefined
         && !step.reason && lastOfflineId === step.offline.challengeId;
       if (step.state === 'offline' && step.offline?.qrDataUrl) lastOfflineId = step.offline.challengeId;
-      if (!sameQrStillUp) options.onStep?.(step, controls);
+      // The same for the first-time QR (server SDKs 5.1): while it is up, the checks answer
+      // { state: 'enroll', expiresAt } without `enroll`. A new QR, once it expired, comes with `enroll`.
+      const sameEnrollQrStillUp = step.state === 'enroll' && !step.enroll?.qrCodeDataUrl && !step.reason && enrollQrUp;
+      if (!sameQrStillUp && !sameEnrollQrStillUp) {
+        enrollQrUp = step.state === 'enroll' && !!step.enroll?.qrCodeDataUrl;
+        options.onStep?.(step, controls);
+      }
       if (TERMINAL.includes(step.state)) return res;
 
       if (step.state === 'passkey_required') {

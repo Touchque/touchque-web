@@ -459,6 +459,11 @@ export class ApprovalController {
         return;
       case 'enroll': {
         const qr = step.enroll?.qrCodeDataUrl;
+        // A check while the first-time QR is up carries none (server SDKs 5.1): keep the QR and codes on screen.
+        if (!qr && !step.reason && this.state.phase === 'enroll' && this.state.enroll) {
+          this.set({ ...base, phase: 'enroll', error: null });
+          return;
+        }
         if (!qr || !isPngDataUrl(qr)) {
           this.set({ ...base, phase: 'error', error: describeApprovalStep(step, this.texts) });
           return;

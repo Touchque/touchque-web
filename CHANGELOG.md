@@ -3,7 +3,14 @@
 All notable changes to this project will be documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [2.1.0] — 2026-11-12
+
+### Fixed
+- **The first-time QR stays on screen while the page checks.** Server SDKs 5.1 answer those checks with `{ state: 'enroll', expiresAt }` and no `enroll`, so the QR being scanned keeps working:
+  - `touchqueFetch` does not pass such a step to `onStep` while the last step it passed was a first-time QR, the same rule as for the offline QR. A new QR, once the old one expired, comes as a new `enroll` step with `enroll.qrCodeDataUrl`.
+  - The approval controller (`createApproval`, `<touchque-approval>`, `@touchque/react`'s `<TouchqueApproval>`) keeps the QR and recovery codes it shows for such a step; it is not an error. An enroll step without a QR when none was shown (a route with `enroll: false`) is still the "not linked" error.
+  - `<touchque-approval>` draws a new first-time QR when one comes; it kept showing the first.
+- **A refusal in your server's own error shape is shown as a refusal, never "Approved".** When a refusal's body has no `touchque` (a server SDK 5.1 `errorBody` that returns a string, an array or `null`), `touchqueFetch` builds the step from the `X-Touchque-State` and `X-Touchque-Reason` headers and passes it to `onStep`, so the approval dialog shows the error. A route's own error without those headers is returned as before. On another origin, expose the headers with `Access-Control-Expose-Headers`.
 
 ## [2.0.0] — 2026-11-11
 

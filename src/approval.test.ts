@@ -11,10 +11,13 @@ vi.mock('@simplewebauthn/browser', () => ({
 }));
 
 import { createApproval, defineTouchqueApproval, approvalTimeLeft, approvalAttribution, DEFAULT_APPROVAL_TEXTS, PasskeyDismissedError } from './index';
-import type { ApprovalState, TouchqueApprovalElement } from './index';
+import type { ApprovalState, TouchqueApprovalElement, Step, StepControls } from './index';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const PNG = 'data:image/png;base64,iVBORw0KGgo=';
+const PNG2 = 'data:image/png;base64,iVBORw0KGgoB';
+/** A check while the first-time QR is up (server SDKs 5.1): no `enroll`. */
+const qrStillUp = () => json({ touchque: { state: 'enroll', expiresAt: new Date(Date.now() + 60_000).toISOString() }, token: 'tk' }, 202);
 
 /** A scripted relay: each call takes the next response (a Response or a function of the request). */
 function relay(script: Array<Response | ((url: string, init: RequestInit) => Response)>) {
@@ -165,6 +168,46 @@ describe('ApprovalController', () => {
     expect(r.calls[0].url).toBe('/tq/login');
   });
 
+  test('first-time QR: stays on screen while the checks carry none, a new QR replaces it, never an error', async () => {
+    const r = relay([
+      json({ touchque: { state: 'enroll', enroll: { qrCodeDataUrl: PNG, recoveryCodes: ['AAAA-BBBB'] } }, token: 't1' }, 202),
+      qrStillUp(), qrStillUp(),
+      json({ touchque: { state: 'enroll', enroll: { qrCodeDataUrl: PNG2, recoveryCodes: ['CCCC-DDDD'] } }, token: 't2' }, 202),
+      qrStillUp(),
+      json({ touchque: { state: 'waiting', requestId: 'r1', number: '47' }, token: 't3' }, 202),
+      json({ ok: true }),
+    ]);
+    const approval = createApproval({ baseUrl: '/tq', fetch: r.fetch }, { pollIntervalMs: 1, approvedMs: 5 });
+    const phases = track(approval);
+    const shown: unknown[] = [];
+    approval.subscribe((s) => { if (s.phase === 'enroll') shown.push(s.enroll); });
+    expect((await approval.fetch('/api/pay', { method: 'POST' })).status).toBe(200);
+    expect(phases).toEqual(['closed', 'enroll', 'waiting', 'approved']);
+    expect(shown).toEqual([{ qrCodeDataUrl: PNG, recoveryCodes: ['AAAA-BBBB'] }, { qrCodeDataUrl: PNG2, recoveryCodes: ['CCCC-DDDD'] }]);
+  });
+
+  test('the controller keeps the QR for an enroll step without one; with no QR shown it is the "not linked" error', () => {
+    const approval = createApproval({ baseUrl: '/tq', fetch: relay([]).fetch });
+    const onStep = (approval as unknown as { onStep: (step: Step, controls: StepControls) => void }).onStep;
+    const controls: StepControls = { useOffline() {}, submitCode() {}, cancel() {} };
+    onStep({ state: 'enroll' }, controls);
+    expect(approval.getState()).toMatchObject({ phase: 'error', error: { code: 'not_linked', message: 'No phone is linked to this account yet.' } });
+    onStep({ state: 'enroll', enroll: { qrCodeDataUrl: PNG, recoveryCodes: ['AAAA-BBBB'] } }, controls);
+    onStep({ state: 'enroll', expiresAt: '2026-11-12T13:05:00.000Z' }, controls);
+    expect(approval.getState()).toMatchObject({ phase: 'enroll', error: null, enroll: { qrCodeDataUrl: PNG, recoveryCodes: ['AAAA-BBBB'] } });
+  });
+
+  test('a refusal in the app\'s own error shape (no touchque in the body) is shown from its headers, never as approved', async () => {
+    const r = relay([new Response(JSON.stringify('Nope'), {
+      status: 403, headers: { 'Content-Type': 'application/json', 'X-Touchque-State': 'rejected', 'X-Touchque-Reason': 'request_rejected' },
+    })]);
+    const approval = createApproval({ baseUrl: '/tq', fetch: r.fetch }, { approvedMs: 5 });
+    const phases = track(approval);
+    expect((await approval.fetch('/api/pay', { method: 'POST' })).status).toBe(403);
+    expect(phases).toEqual(['closed', 'error']);
+    expect(approval.getState().error).toMatchObject({ code: 'rejected', message: 'The request was rejected on your phone.' });
+  });
+
   test('a network failure is shown, not swallowed', async () => {
     const r = relay([() => { throw new TypeError('Failed to fetch'); }]);
     const approval = createApproval({ baseUrl: '/tq', fetch: r.fetch });
@@ -216,6 +259,27 @@ describe('<touchque-approval>', () => {
     (dialog.querySelector('.tq-btn') as HTMLButtonElement).click();
     expect(dialog.hasAttribute('open')).toBe(false);
     expect(events[events.length - 1]).toBe('touchque-close');
+    node.remove();
+  });
+
+  test('a new first-time QR replaces the one on screen', async () => {
+    defineTouchqueApproval();
+    const r = relay([
+      json({ touchque: { state: 'enroll', enroll: { qrCodeDataUrl: PNG, recoveryCodes: ['AAAA-BBBB'] } }, token: 't1' }, 202),
+      qrStillUp(),
+      json({ touchque: { state: 'enroll', enroll: { qrCodeDataUrl: PNG2, recoveryCodes: ['CCCC-DDDD'] } }, token: 't2' }, 202),
+      json({ ok: true }),
+    ]);
+    const node = document.createElement('touchque-approval') as TouchqueApprovalElement;
+    node.config = { baseUrl: '/tq', fetch: r.fetch };
+    node.options = { pollIntervalMs: 1, approvedMs: 5 };
+    document.body.append(node);
+    const shown: Array<string | null> = [];
+    node.approval.subscribe((s) => {
+      if (s.phase === 'enroll') shown.push(node.shadowRoot!.querySelector('img.tq-qr')?.getAttribute('src') ?? null);
+    });
+    expect((await node.fetch('/api/pay')).status).toBe(200);
+    expect(shown).toEqual([PNG, PNG2]);
     node.remove();
   });
 

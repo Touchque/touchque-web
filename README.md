@@ -44,6 +44,14 @@ const res = await touchqueFetch('/api/transfer', { method: 'POST', body }, {
 `touchqueFetch` re-sends the request with `X-Touchque-Token` on an interval
 until the step resolves — no manual polling loop to write.
 
+While the first-time QR is up, the server's answers to these checks carry no QR (`{ state: 'enroll', expiresAt }`,
+server SDKs 5.1). `touchqueFetch` does not pass them to `onStep`, so keep showing the QR you have. When it expires,
+a new QR comes as a new `enroll` step with `enroll.qrCodeDataUrl`. The approval dialog does the same.
+
+A refusal your server sends in its own error shape (server SDKs 5.1 `errorBody`) may have no `touchque` in the
+body. Its `X-Touchque-State` and `X-Touchque-Reason` headers then give the step that `onStep` and the dialog get.
+When your API is on another origin, list both in its `Access-Control-Expose-Headers`, or the page cannot read them.
+
 ## Drop-in approval dialog (no UI to write)
 
 `<touchque-approval>` is the step-up UI, ready made: a web component that works with any framework or none.
