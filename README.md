@@ -33,20 +33,31 @@ import { touchqueFetch } from '@touchque/web';
 const res = await touchqueFetch('/api/transfer', { method: 'POST', body }, {
   onStep(step, controls) {
     if (step.state === 'waiting') showNumber(step.number);       // number matching
-    if (step.state === 'enroll') showQr(step.enroll.qrCodeDataUrl); // first-time link
-    if (step.state === 'offline') showOfflineQr(step.offline.qrDataUrl); // no internet on the phone
+    if (step.enroll) showQr(step.enroll.qrCodeDataUrl);          // first-time link
+    if (step.reason === 'enrollment_off') showError('No phone is linked to this account yet.'); // final, no QR
+    if (step.offline?.qrDataUrl) showOfflineQr(step.offline.qrDataUrl); // no internet on the phone
     // controls.useOffline() / controls.submitCode(code) / controls.cancel()
   },
 });
-// res is your route's own response, once approved.
+// res is your route's own response once approved, or the final refusal (4xx), or the final 202 of an
+// enrollment_off step: a 202 whose body has `touchque` is a step, not your route's answer.
 ```
 
 `touchqueFetch` re-sends the request with `X-Touchque-Token` on an interval
 until the step resolves — no manual polling loop to write.
 
 While the first-time QR is up, the server's answers to these checks carry no QR (`{ state: 'enroll', expiresAt }`,
-server SDKs 5.1). `touchqueFetch` does not pass them to `onStep`, so keep showing the QR you have. When it expires,
-a new QR comes as a new `enroll` step with `enroll.qrCodeDataUrl`. The approval dialog does the same.
+server SDKs 5.1). `touchqueFetch` does not pass them to `onStep`, so keep showing the QR you have. About 15 s
+before it expires, a new QR comes as a new `enroll` step with `enroll.qrCodeDataUrl` and new recovery codes:
+replace both, the old ones stop working. The approval dialog does the same.
+
+An `enroll` step with `reason: 'enrollment_off'` (server SDKs 5.2) means the user has no phone linked and this route
+may not show a linking QR (`enroll: false`, e.g. a sign-in before the password step). It is final, and it has no
+`enroll`: `touchqueFetch` passes it to `onStep` once and returns its response, a 202, with no more checks. That 202
+is not your route's answer, though `res.ok` is true: tell it apart by the `touchque` in its body, or by the step.
+`classic2fa.login()`, `passkeys.register()` and the approval dialog's `fetch()` reject with a `TouchqueWebAPIError`
+(status 202) instead. The dialog shows "No phone is linked to this account yet. Link the Touchque app first."
+(`texts.errors.enrollment_off`; when you translated `not_linked` but not this one, your `not_linked`).
 
 A refusal your server sends in its own error shape (server SDKs 5.1 `errorBody`) may have no `touchque` in the
 body. Its `X-Touchque-State` and `X-Touchque-Reason` headers then give the step that `onStep` and the dialog get.
@@ -76,8 +87,10 @@ The dialog opens only when your server asks for an approval, and shows each step
 - the passkey step, behind a button (Safari needs a click for WebAuthn);
 - refusals (rejected, expired, blocked, paused, rate limited) with their case code.
 
-`dialog.fetch()` resolves with your route's response. Closing the dialog while it waits rejects with an
-`AbortError`. `dialog.login()` runs the classic push sign-in through `touchqueRouter`'s `/login` the same way.
+`dialog.fetch()` resolves with your route's response, or with the final refusal (4xx). Closing the dialog while
+it waits rejects with an `AbortError`; an `enrollment_off` step (no phone linked) rejects with a
+`TouchqueWebAPIError` (status 202), and its error stays on screen. `dialog.login()` runs the classic push sign-in
+through `touchqueRouter`'s `/login` the same way.
 
 - `base-url`: where `touchqueRouter` (or your relay) is mounted; it serves the passkey step.
   `credentials="include"` for a cookie session on another origin. Or set the `config` property to a full

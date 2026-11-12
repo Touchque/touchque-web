@@ -70,7 +70,8 @@ export class Passkeys {
     // relay answers 202 with the step (show `step.number`) until approved.
     const res = await this.http.stepUp(this.paths.registerOptions, {}, approval);
     const optionsBody = await res.json().catch(() => null);
-    if (!res.ok) {
+    // A refusal, or a 202 that ended the wait (enrollment_off: no phone linked), is a step, not the options.
+    if (!res.ok || res.status === 202) {
       const step = (optionsBody as { touchque?: Step } | null)?.touchque;
       throw webApiError(res.status, optionsBody, step?.reason || step?.state || 'register_options_failed');
     }

@@ -120,7 +120,8 @@ export class ClassicTwoFactor {
       },
     );
     const body = await res.json().catch(() => null);
-    if (res.ok) return body as ClassicLoginResult;
+    // A 202 that ended the wait carries a step, never a sign-in (`enroll` with reason `enrollment_off`: no phone linked).
+    if (res.ok && res.status !== 202) return body as ClassicLoginResult;
     const step = body?.touchque as Step | undefined;
     if (step?.state === 'passkey_required' && step.requestId) throw new PasskeyRequiredError(step.requestId);
     if (res.status === 409 && body?.error === 'PASSKEY_REQUIRED' && body.requestId) throw new PasskeyRequiredError(body.requestId); // servers before @touchque/node 2

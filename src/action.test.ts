@@ -138,6 +138,17 @@ describe('touchqueFetch', () => {
     expect(steps.map((x) => x.state)).toEqual(['enroll', 'enroll', 'rejected']);
   });
 
+  test('an enroll step with reason enrollment_off is final: onStep once, its response returned, no more checks', async () => {
+    const s = server([json({ touchque: { state: 'enroll', reason: 'enrollment_off' }, token: 't1' }, 202)]);
+    const onStep = vi.fn();
+    const res = await touchqueFetch('/x', { method: 'POST' }, { fetch: s.fetch, pollIntervalMs: 1, onStep });
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ touchque: { state: 'enroll', reason: 'enrollment_off' }, token: 't1' });
+    expect(onStep).toHaveBeenCalledTimes(1);
+    expect(onStep.mock.calls[0][0]).toEqual({ state: 'enroll', reason: 'enrollment_off' });
+    expect(s.fetch).toHaveBeenCalledTimes(1);
+  });
+
   test('passkey_required runs the passkey approval once, then continues', async () => {
     const s = server([
       json({ touchque: { state: 'passkey_required', requestId: 'r9' }, token: 't1' }, 202),
@@ -287,6 +298,17 @@ describe('classic2fa.login — two-phase', () => {
     const result = await c.login({ onStep: (st) => st.number && numbers.push(st.number), pollIntervalMs: 1 });
     expect(numbers).toEqual(['12']);
     expect(result).toMatchObject({ status: 'success', requestId: 'r1' });
+  });
+
+  test('no phone and no linking on this route (enrollment_off): rejects after one step, never resolves as a sign-in', async () => {
+    const s = server([json({ touchque: { state: 'enroll', reason: 'enrollment_off' }, token: 't1' }, 202)]);
+    const http = new RelayHttp({ baseUrl: 'https://app.example.com/touchque', fetch: s.fetch });
+    const c = new ClassicTwoFactor(http, { enrollStart: '/enroll/start', enrollStatus: '/enroll/status', login: '/login' } as any);
+    const steps: Step[] = [];
+    await expect(c.login({ externalUsername: 'new@example.com', onStep: (st) => steps.push(st), pollIntervalMs: 1 }))
+      .rejects.toMatchObject({ name: 'TouchqueWebAPIError', status: 202, message: 'enrollment_off', body: { touchque: { reason: 'enrollment_off' } } });
+    expect(steps).toEqual([{ state: 'enroll', reason: 'enrollment_off' }]);
+    expect(s.fetch).toHaveBeenCalledTimes(1);
   });
 });
 

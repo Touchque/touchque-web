@@ -97,6 +97,17 @@ describe('passkeys.register', () => {
     expect(result.credentialId).toBe('cred_2');
   });
 
+  test('a final enrollment_off 202 (no phone linked) throws its reason and never opens the passkey prompt', async () => {
+    const { fn, calls } = fetchStub([{ status: 202, body: { touchque: { state: 'enroll', reason: 'enrollment_off' }, token: 't1' } }]);
+    const tq = createTouchqueWeb({ baseUrl: 'https://api.example.com', fetch: fn });
+    const steps: unknown[] = [];
+    await expect(tq.passkeys.register({}, { onStep: (step) => steps.push(step), pollIntervalMs: 1 }))
+      .rejects.toMatchObject({ name: 'TouchqueWebAPIError', status: 202, message: 'enrollment_off' });
+    expect(steps).toEqual([{ state: 'enroll', reason: 'enrollment_off' }]);
+    expect(calls).toHaveLength(1);
+    expect(startRegistration).not.toHaveBeenCalled();
+  });
+
   test('a rejected approval throws and never opens the passkey prompt', async () => {
     const { fn } = fetchStub([{ status: 403, body: { touchque: { state: 'rejected' } } }]);
     const tq = createTouchqueWeb({ baseUrl: 'https://api.example.com', fetch: fn });

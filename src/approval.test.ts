@@ -10,8 +10,8 @@ vi.mock('@simplewebauthn/browser', () => ({
   WebAuthnAbortService: { cancelCeremony: vi.fn(), createNewAbortSignal: vi.fn() },
 }));
 
-import { createApproval, defineTouchqueApproval, approvalTimeLeft, approvalAttribution, DEFAULT_APPROVAL_TEXTS, PasskeyDismissedError } from './index';
-import type { ApprovalState, TouchqueApprovalElement, Step, StepControls } from './index';
+import { createApproval, defineTouchqueApproval, approvalTimeLeft, approvalAttribution, describeApprovalStep, DEFAULT_APPROVAL_TEXTS, PasskeyDismissedError } from './index';
+import type { ApprovalState, ApprovalTexts, TouchqueApprovalElement, Step, StepControls } from './index';
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 const PNG = 'data:image/png;base64,iVBORw0KGgo=';
@@ -197,6 +197,51 @@ describe('ApprovalController', () => {
     expect(approval.getState()).toMatchObject({ phase: 'enroll', error: null, enroll: { qrCodeDataUrl: PNG, recoveryCodes: ['AAAA-BBBB'] } });
   });
 
+  test('enrollment_off (no phone, and the route may not link one): fetch rejects, the not-linked error stays, no more checks', async () => {
+    const off = () => json({ touchque: { state: 'enroll', reason: 'enrollment_off' }, token: 't1' }, 202);
+    const r = relay([off()]);
+    const approval = createApproval({ baseUrl: '/tq', fetch: r.fetch }, { pollIntervalMs: 1, approvedMs: 5 });
+    const phases = track(approval);
+    await expect(approval.fetch('/api/pay', { method: 'POST' })).rejects.toMatchObject({
+      name: 'TouchqueWebAPIError', status: 202, message: 'enrollment_off', body: { touchque: { state: 'enroll', reason: 'enrollment_off' } },
+    });
+    expect(phases).toEqual(['closed', 'error']);
+    expect(approval.getState().error).toEqual({ code: 'enrollment_off', message: 'No phone is linked to this account yet. Link the Touchque app first.' });
+    expect(r.calls).toHaveLength(1);
+
+    const signIn = relay([off()]);
+    const login = createApproval({ baseUrl: '/tq', fetch: signIn.fetch }, { pollIntervalMs: 1, texts: { errors: { enrollment_off: 'Link your phone first.' } } });
+    await expect(login.login({ externalUsername: 'new@example.com' })).rejects.toMatchObject({ name: 'TouchqueWebAPIError', status: 202 });
+    expect(login.getState()).toMatchObject({ phase: 'error', error: { code: 'enrollment_off', message: 'Link your phone first.' } });
+    expect(signIn.calls).toHaveLength(1);
+  });
+
+  test('a route\'s own 202 Accepted (no touchque in it) is its answer: fetch resolves with it', async () => {
+    const r = relay([
+      json({ touchque: { state: 'waiting', requestId: 'r1' }, token: 't1' }, 202),
+      json({ queued: true }, 202),
+    ]);
+    const approval = createApproval({ baseUrl: '/tq', fetch: r.fetch }, { pollIntervalMs: 1, approvedMs: 5 });
+    const res = await approval.fetch('/api/export', { method: 'POST' });
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ queued: true });
+    expect(approval.getState().phase).toBe('approved');
+  });
+
+  test('enrollment_off text: optional; texts that translate only not_linked use theirs for it', async () => {
+    const step: Step = { state: 'enroll', reason: 'enrollment_off' };
+    expect(DEFAULT_APPROVAL_TEXTS.errors.enrollment_off).toBe('No phone is linked to this account yet. Link the Touchque app first.');
+    // A full table written against 2.1, without the key: its own not_linked.
+    const { enrollment_off: _unset, ...older } = DEFAULT_APPROVAL_TEXTS.errors;
+    const table: ApprovalTexts = { ...DEFAULT_APPROVAL_TEXTS, errors: { ...older, not_linked: 'No phone on file.' } };
+    expect(describeApprovalStep(step, table)).toEqual({ code: 'enrollment_off', message: 'No phone on file.' });
+    for (const texts of [{ errors: { not_linked: 'No phone on file.' } }, table]) {
+      const approval = createApproval({ baseUrl: '/tq', fetch: relay([json({ touchque: step, token: 't1' }, 202)]).fetch }, { texts });
+      await approval.fetch('/api/pay').catch(() => undefined);
+      expect(approval.getState().error?.message).toBe('No phone on file.');
+    }
+  });
+
   test('a refusal in the app\'s own error shape (no touchque in the body) is shown from its headers, never as approved', async () => {
     const r = relay([new Response(JSON.stringify('Nope'), {
       status: 403, headers: { 'Content-Type': 'application/json', 'X-Touchque-State': 'rejected', 'X-Touchque-Reason': 'request_rejected' },
@@ -259,6 +304,22 @@ describe('<touchque-approval>', () => {
     (dialog.querySelector('.tq-btn') as HTMLButtonElement).click();
     expect(dialog.hasAttribute('open')).toBe(false);
     expect(events[events.length - 1]).toBe('touchque-close');
+    node.remove();
+  });
+
+  test('shows the not-linked error for enrollment_off', async () => {
+    defineTouchqueApproval();
+    const r = relay([json({ touchque: { state: 'enroll', reason: 'enrollment_off' }, token: 't1' }, 202)]);
+    const node = document.createElement('touchque-approval') as TouchqueApprovalElement;
+    node.config = { baseUrl: '/tq', fetch: r.fetch };
+    node.options = { pollIntervalMs: 1 };
+    document.body.append(node);
+    await expect(node.fetch('/api/pay')).rejects.toMatchObject({ name: 'TouchqueWebAPIError', status: 202 });
+    const dialog = node.shadowRoot!.querySelector('dialog')!;
+    expect(dialog.hasAttribute('open')).toBe(true);
+    expect(dialog.textContent).toContain('Not approved');
+    expect(dialog.textContent).toContain('No phone is linked to this account yet. Link the Touchque app first.');
+    expect(r.calls).toHaveLength(1);
     node.remove();
   });
 

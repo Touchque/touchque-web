@@ -7,12 +7,14 @@
 //     onStep(step, controls) {
 //       // render it YOUR way:
 //       //   step.state === 'waiting'  → "Approve on your phone", show step.number if present
-//       //   step.state === 'enroll'   → <img src={step.enroll.qrCodeDataUrl}> "Scan with Touchque"
+//       //   step.enroll               → <img src={step.enroll.qrCodeDataUrl}> "Scan with Touchque"
+//       //   step.reason === 'enrollment_off' → "No phone is linked to this account yet" (final: no QR)
 //       //   step.state === 'offline'  → <img src={step.offline.qrDataUrl}> + input → controls.submitCode(code)
 //       //   controls.useOffline()     → phone has no internet
 //     },
 //   });
-//   // res is your route's own response once approved (or the final 403/408/423/429).
+//   // res is your route's own response once approved, or the final 403/408/423/429, or the final 202
+//   // of an enrollment_off step (no phone linked): a 202 whose body has `touchque` is not your route's answer.
 //
 // While waiting it re-sends the same request with the X-Touchque-Token header
 // every `pollIntervalMs`. Your route runs once, after approval.
@@ -38,6 +40,12 @@ export interface Step {
     /** Number matching: print this under the QR — the phone shows it among two decoys and the user taps the match. */
     challengeCode?: string;
   };
+  /**
+   * Why: a refusal's reason (`risk`, `geo_policy`…), or for `enroll`
+   * `enrollment_off` (server SDKs 5.2): the user has no phone linked and this
+   * route may not show a linking QR. That step is final: touchqueFetch passes it
+   * to `onStep` once and returns its response.
+   */
   reason?: string;
   /**
    * "Why?" (server SDKs 4.0.0): the case code of this decision (`K7P-2QX`).
@@ -144,6 +152,9 @@ import { logWarn, errorText } from './log';
 
 const TERMINAL: StepState[] = ['approved', 'rejected', 'expired', 'blocked', 'frozen', 'rate_limited'];
 const REFUSALS: StepState[] = ['rejected', 'expired', 'blocked', 'frozen', 'rate_limited'];
+
+/** The user has no phone and the route may not link one (server SDKs 5.2): nothing to wait for. */
+const isEnrollmentOff = (step: Step): boolean => step.state === 'enroll' && step.reason === 'enrollment_off';
 
 /**
  * A refusal sent in the app's own error shape (server SDKs 5.1 `errorBody`) has
@@ -266,13 +277,14 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
         && !step.reason && lastOfflineId === step.offline.challengeId;
       if (step.state === 'offline' && step.offline?.qrDataUrl) lastOfflineId = step.offline.challengeId;
       // The same for the first-time QR (server SDKs 5.1): while it is up, the checks answer
-      // { state: 'enroll', expiresAt } without `enroll`. A new QR, once it expired, comes with `enroll`.
+      // { state: 'enroll', expiresAt } without `enroll`. About 15 s before it expires a new QR comes with
+      // `enroll`, with new recovery codes: replace both, the old ones stop working.
       const sameEnrollQrStillUp = step.state === 'enroll' && !step.enroll?.qrCodeDataUrl && !step.reason && enrollQrUp;
       if (!sameQrStillUp && !sameEnrollQrStillUp) {
         enrollQrUp = step.state === 'enroll' && !!step.enroll?.qrCodeDataUrl;
         options.onStep?.(step, controls);
       }
-      if (TERMINAL.includes(step.state)) return res;
+      if (TERMINAL.includes(step.state) || isEnrollmentOff(step)) return res;
 
       if (step.state === 'passkey_required') {
         if (!options.approveWithPasskey || !step.requestId) return res; // caller handles the passkey step itself

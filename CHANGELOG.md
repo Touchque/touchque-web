@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.2.0] — 2026-11-13
+
+### Changed
+- **`enrollment_off` ends the wait.** Server SDKs 5.2 answer a user with no phone on a route that may not show a linking QR (`enroll: false`) with 202 `{ touchque: { state: 'enroll', reason: 'enrollment_off' } }`, a step with no `enroll`; 5.1 sent a bare `enroll` step, and pages kept checking it. Now:
+  - `touchqueFetch` treats it as final: `onStep` gets it once and its response is returned, with no more checks. That response is a 202, so `res.ok` is true: a 202 whose body has `touchque` is a step, not your route's answer.
+  - The approval controller's `fetch()` (`createApproval`, `<touchque-approval>`'s `fetch()`, `@touchque/react`'s `useTouchqueApproval().fetch`) rejects with a `TouchqueWebAPIError` (status 202, `body.touchque.reason` `enrollment_off`), as `login()` does, so code that checks `res.ok` never takes it for success. The dialog shows the not-linked error with its own text, `texts.errors.enrollment_off`: "No phone is linked to this account yet. Link the Touchque app first." (error code `enrollment_off`).
+  - `classic2fa.login()` rejects with a `TouchqueWebAPIError` (status 202); a 202 that ends the wait never resolves as a sign-in.
+  - `passkeys.register()` throws a `TouchqueWebAPIError` with the step's reason for such a 202 instead of passing it to the passkey prompt.
+- `texts.errors.enrollment_off` is optional in `ApprovalTexts`, so texts typed against 2.1 still compile. Unset, it is your own `errors.not_linked` when you translated that, else the default above.
+- README: the quick start shows the QR only when `step.enroll` is there and the not-linked text for `step.reason === 'enrollment_off'` (the sample read `step.enroll` on every `enroll` step), and says what the final 202 is. A new first-time QR comes about 15 s before the old one expires, with new recovery codes: replace both, the old ones stop working (it said: when it expires).
+
 ## [2.1.0] — 2026-11-12
 
 ### Fixed

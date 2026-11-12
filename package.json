@@ -1,6 +1,6 @@
 {
   "name": "@touchque/web",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Browser SDK for Touchque Authenticator — passkey ceremonies and behavioral telemetry",
   "repository": {
     "type": "git",

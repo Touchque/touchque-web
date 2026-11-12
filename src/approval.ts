@@ -20,7 +20,7 @@ import type { TouchqueWebConfig } from './types';
 import type { Step, StepControls, TouchqueFetchOptions } from './action';
 import type { ClassicLoginResult } from './classic2fa';
 import { normalizeOfflineCode } from './offline';
-import { PasskeyDismissedError, PasskeyNotRegisteredError, TouchqueWebAPIError } from './errors';
+import { PasskeyDismissedError, PasskeyNotRegisteredError, TouchqueWebAPIError, webApiError } from './errors';
 
 export type ApprovalPhase = 'closed' | 'waiting' | 'enroll' | 'offline' | 'passkey' | 'approved' | 'error';
 
@@ -105,6 +105,11 @@ export interface ApprovalTexts {
     action_disabled: string;
     already_linked: string;
     not_linked: string;
+    /**
+     * No phone is linked, and this route may not link one (`enroll` with reason
+     * `enrollment_off`). Unset, it is your `not_linked` when you set that, else the default.
+     */
+    enrollment_off?: string;
     unavailable: string;
     misconfigured: string;
     frozen: (retryAfter?: number) => string;
@@ -166,6 +171,7 @@ export const DEFAULT_APPROVAL_TEXTS: ApprovalTexts = {
     action_disabled: 'This action is turned off.',
     already_linked: 'A phone is already linked to this account. Approve on that phone.',
     not_linked: 'No phone is linked to this account yet.',
+    enrollment_off: 'No phone is linked to this account yet. Link the Touchque app first.',
     unavailable: 'Approvals are unavailable right now. Try again shortly.',
     misconfigured: 'Approvals are not set up correctly on this site.',
     frozen: (s) => `Approvals for this account are paused after several rejected requests.${wait(s)}`,
@@ -202,7 +208,11 @@ function abortError(): Error {
 const isAbort = (err: unknown) => (err as { name?: string })?.name === 'AbortError';
 
 function mergeTexts(texts?: ApprovalOptions['texts']): ApprovalTexts {
-  return { ...DEFAULT_APPROVAL_TEXTS, ...(texts ?? {}), errors: { ...DEFAULT_APPROVAL_TEXTS.errors, ...(texts?.errors ?? {}) } } as ApprovalTexts;
+  const own = texts?.errors ?? {};
+  const errors = { ...DEFAULT_APPROVAL_TEXTS.errors, ...own };
+  // Texts that translate not_linked but not enrollment_off (written before 2.2) keep their own not_linked for it.
+  if (own.not_linked !== undefined && own.enrollment_off === undefined) errors.enrollment_off = own.not_linked;
+  return { ...DEFAULT_APPROVAL_TEXTS, ...(texts ?? {}), errors } as ApprovalTexts;
 }
 
 /** The line under the dialog as shown: `securedBy`, or the default when it leaves out Touchque. It is always there. */
@@ -221,7 +231,10 @@ export function describeApprovalStep(step: Step, texts: ApprovalTexts = DEFAULT_
     case 'expired': message = e.expired; break;
     case 'frozen': message = e.frozen(step.retryAfter); break;
     case 'rate_limited': message = e.rate_limited(step.retryAfter); break;
-    case 'enroll': code = reason || 'not_linked'; message = reason === 'already_linked' ? e.already_linked : e.not_linked; break;
+    case 'enroll':
+      code = reason || 'not_linked';
+      message = reason === 'already_linked' ? e.already_linked : reason === 'enrollment_off' ? e.enrollment_off ?? e.not_linked : e.not_linked;
+      break;
     default: {
       code = reason || 'blocked';
       const known = (e as unknown as Record<string, unknown>)[reason];
@@ -276,8 +289,11 @@ export class ApprovalController {
    * fetch() for a route guarded with requireTouchque (or any Touchque server
    * SDK guard). Shows the dialog while the user approves and resolves with
    * your route's response. A refusal resolves with the final 4xx and leaves
-   * the error on screen until closed. Closing the dialog while waiting
-   * rejects with an `AbortError`.
+   * the error on screen until closed. A final 202 step (`enroll` with reason
+   * `enrollment_off`: no phone linked, and the route may not link one) rejects
+   * with `TouchqueWebAPIError` (status 202), as `login()` does, and its error
+   * stays on screen too. Closing the dialog while waiting rejects with an
+   * `AbortError`.
    */
   fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const signal = this.begin();
@@ -286,6 +302,10 @@ export class ApprovalController {
         signal, onStep: this.onStep, approveWithPasskey: this.approveWithPasskey,
         pollIntervalMs: this.options.pollIntervalMs, telemetry: this.options.telemetry,
       });
+      // A 202 that carries a step ended the wait without your route's answer. A route's own 202 has no `touchque`.
+      const final = res.status === 202 ? await res.clone().json().catch(() => null) : null;
+      const step = (final as { touchque?: Step } | null)?.touchque;
+      if (step && typeof step.state === 'string') throw webApiError(res.status, final, step.reason || step.state);
       this.finish(signal);
       return res;
     } catch (err) {
