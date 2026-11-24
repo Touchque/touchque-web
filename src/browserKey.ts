@@ -77,18 +77,6 @@ export interface BrowserProof {
   hints?: BrowserHints;
 }
 
-/** A device-risk report's seal (see `BrowserKey.sealDevice`). */
-export interface DeviceSeal {
-  jwk: BrowserKeyJwk;
-  aud: string;
-  /** Unix seconds. */
-  iat: number;
-  /** base64url of 16 random bytes. */
-  nonce: string;
-  /** base64url of the 64-byte r||s ECDSA signature over `deviceSealMessage(aud, iat, nonce, digest)`. */
-  sig: string;
-}
-
 /**
  * Where the key pair is kept. The default is IndexedDB; pass your own to
  * `createBrowserKey` only for tests or an unusual runtime.
@@ -139,15 +127,6 @@ export interface BrowserKey {
    */
   thumbprint(): Promise<string | null>;
   /**
-   * Seals a device-risk report (`deviceRisk.collect`): signs
-   * `deviceSealMessage(aud, iat, nonce, digest)` with this browser's key, so the
-   * server can tell the report came whole from a browser holding the key, and
-   * accept it once. A different message from the proof's, so a seal can never
-   * stand in for a proof. Resolves `null` (never throws) without WebCrypto or
-   * IndexedDB. Optional: a custom `BrowserKey` may leave it out.
-   */
-  sealDevice?(digest: string): Promise<DeviceSeal | null>;
-  /**
    * Deletes this browser's key: the next proof uses a new key, so Touchque
    * treats it as a new browser. Use it on shared computers or when the user
    * signs out everywhere (and forget it on the server too). Never throws.
@@ -158,11 +137,6 @@ export interface BrowserKey {
 /** The exact UTF-8 message the browser key signs. */
 export function browserProofMessage(aud: string, iat: number, nonce: string): string {
   return `touchque-browser:v1\n${aud}\n${iat}\n${nonce}`;
-}
-
-/** The exact UTF-8 message a device-risk seal signs; `digest` is base64url(SHA-256(report body)). */
-export function deviceSealMessage(aud: string, iat: number, nonce: string, digest: string): string {
-  return `touchque-device:v1\n${aud}\n${iat}\n${nonce}\n${digest}`;
 }
 
 /** RFC 7638 thumbprint input for an EC key: the required members in lexicographic order, no whitespace. */
@@ -398,21 +372,6 @@ export function createBrowserKey(options: BrowserKeyOptions = {}): BrowserKey {
         if (withHints.length <= MAX_HEADER_CHARS) return withHints;
       }
       return base64url(utf8(JSON.stringify(proof)));
-    }, timeoutMs),
-
-    sealDevice: (digest: string) => within(async () => {
-      const c = cryptoImpl();
-      const s = store();
-      const aud = audience();
-      if (!c || !s || !aud || !/^[A-Za-z0-9_-]{43}$/.test(digest)) return null;
-      const { pair, jwk } = await keys(c, s);
-      const iat = Math.floor((options.now ?? Date.now)() / 1000);
-      const nonce = base64url(c.getRandomValues(new Uint8Array(16)));
-      const sig = new Uint8Array(await c.subtle.sign(
-        { name: 'ECDSA', hash: 'SHA-256' }, pair.privateKey, utf8(deviceSealMessage(aud, iat, nonce, digest)),
-      ));
-      if (sig.length !== 64) return null;
-      return { jwk, aud, iat, nonce, sig: base64url(sig) };
     }, timeoutMs),
 
     thumbprint: () => within(async () => {

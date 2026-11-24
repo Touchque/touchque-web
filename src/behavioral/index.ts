@@ -9,7 +9,6 @@
 // can never block or surface an error on the partner's 2FA flow.
 
 import { createBehavioralTracker } from './tracker';
-import { createDeviceRisk } from '../deviceRisk';
 
 export { collectDeviceSignals } from './fingerprint';
 export type { DeviceSignals } from './fingerprint';
@@ -24,12 +23,12 @@ export interface AttachBehavioralOptions {
   /** Touchque API base URL, e.g. `https://api.touchque.com`. */
   apiBaseUrl: string;
   /**
-   * Opt in to Device risk on this page (bigger privacy footprint): the
-   * telemetry carries the page's device report (`deviceRisk.collect`), which
-   * Touchque identifies as a visitor of your workspace. Only used when the
-   * workspace turned Device risk on; disclose it in your privacy notice.
+   * With Touchque Device Risk on the page (`@touchque/device-risk`, a separate
+   * product): a function that gives its report, e.g.
+   * `() => deviceRisk.collect({ purpose: 'sign_in' })`; the telemetry carries it
+   * and Touchque identifies the visitor. Disclose it in your privacy notice.
    */
-  collectDeviceFingerprint?: boolean;
+  deviceRiskReport?: () => Promise<string | null>;
   /** Sampling interval (ms) for the internal tracker. Default 1000. */
   sampleIntervalMs?: number;
   /** Injectable fetch implementation. Defaults to the global `fetch`. */
@@ -80,9 +79,9 @@ export function attachBehavioral(
 
   // The page's Device risk report, collected once; the async collection
   // never delays tracking or the first submit beyond ~1.5 s (audio probe).
-  let reportPromise: Promise<string> | null = null;
-  if (options.collectDeviceFingerprint === true) {
-    reportPromise = createDeviceRisk().collect({ purpose: 'sign_in' });
+  let reportPromise: Promise<string | null> | null = null;
+  if (typeof options.deviceRiskReport === 'function') {
+    try { reportPromise = Promise.resolve(options.deviceRiskReport()).catch(() => null); } catch { reportPromise = null; }
   }
 
   tracker.start();
@@ -92,7 +91,8 @@ export function attachBehavioral(
     const body: Record<string, unknown> = { ...metrics };
     if (reportPromise) {
       try {
-        body.deviceRisk = await reportPromise;
+        const report = await reportPromise;
+        if (report) body.deviceRisk = report;
       } catch { /* the movement aggregates still go out */ }
     }
     try {

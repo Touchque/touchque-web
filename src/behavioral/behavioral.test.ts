@@ -202,50 +202,33 @@ describe('attachBehavioral', () => {
     h.stop();
   });
 
-  test('carries the Device risk report only when collectDeviceFingerprint is true', async () => {
-    // jsdom has no canvas; make getContext return null so the report's canvas parts are null.
-    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null as never);
-    // Newer Node's global localStorage shadows jsdom's and is unusable here.
-    const store = new Map<string, string>();
-    Object.defineProperty(window, 'localStorage', {
-      configurable: true,
-      value: {
-        getItem: (k: string) => store.get(k) ?? null,
-        setItem: (k: string, v: string) => { store.set(k, String(v)); },
-        removeItem: (k: string) => { store.delete(k); },
-        clear: () => store.clear(),
-      },
-    });
-
+  test('carries the Device risk report only when the page passes one (@touchque/device-risk)', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, status: 200, text: async () => '' }) as any);
-    const withFp = attachBehavioral(container, {
+    const withReport = attachBehavioral(container, {
       telemetryToken: 't',
       requestId: 'r',
       apiBaseUrl: 'https://x',
-      collectDeviceFingerprint: true,
+      deviceRiskReport: async () => 'tqe1.9d8a2f55.e.i.c',
       fetch: fetchMock as unknown as typeof fetch,
     });
-    await withFp.submit();
+    await withReport.submit();
     const sent = JSON.parse((fetchMock.mock.calls[0] as any)[1].body);
-    // The Device risk report rides along; the old fingerprints never do.
-    expect(sent.deviceRisk).toMatch(/^[A-Za-z0-9_-]+$/);
-    const report = JSON.parse(Buffer.from(sent.deviceRisk, 'base64url').toString('utf8'));
-    expect(JSON.parse(report.body)).toMatchObject({ v: 1, p: 'sign_in' });
+    expect(sent.deviceRisk).toBe('tqe1.9d8a2f55.e.i.c');
     expect(sent).not.toHaveProperty('deviceFingerprint');
     expect(sent).not.toHaveProperty('deviceSignals');
-    withFp.stop();
+    withReport.stop();
 
     const fetchMock2 = vi.fn(async () => ({ ok: true, status: 200, text: async () => '' }) as any);
-    const noFp = attachBehavioral(container, {
+    const failing = attachBehavioral(container, {
       telemetryToken: 't',
       requestId: 'r',
       apiBaseUrl: 'https://x',
+      deviceRiskReport: async () => { throw new Error('blocked'); },
       fetch: fetchMock2 as unknown as typeof fetch,
     });
-    await noFp.submit();
+    await failing.submit();
     const sentWithout = JSON.parse((fetchMock2.mock.calls[0] as any)[1].body);
     expect(sentWithout).not.toHaveProperty('deviceRisk');
-    expect(sentWithout).not.toHaveProperty('deviceFingerprint');
-    noFp.stop();
+    failing.stop();
   });
 });

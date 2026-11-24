@@ -1,8 +1,7 @@
-// DEPRECATED: Device risk (src/deviceRisk.ts, deviceRisk.identify / collect)
+// DEPRECATED: Touchque Device Risk (@touchque/device-risk, a separate product)
 // replaced these signals; Touchque no longer reads `deviceSignals` or the v1
-// fingerprint. This file keeps the trait helpers deviceRisk.ts uses, and
-// collectDeviceSignals / generateDeviceFingerprint as shims for code that
-// still calls them.
+// fingerprint. collectDeviceSignals / generateDeviceFingerprint stay as shims
+// for code that still calls them.
 //
 // Browser device signals — deliberately separate from the movement tracker.
 // A persistent device identity is a materially bigger privacy footprint than
@@ -60,7 +59,7 @@ function randomId(): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** The stable random id (`tq2_…`), shared with deviceRisk.ts; null when storage is unavailable. */
+/** The stable random id (`tq2_…`, the same one @touchque/device-risk keeps); null when storage is unavailable. */
 export function readOrCreateDeviceId(): string | null {
   try {
     const existing = window.localStorage.getItem(STORAGE_KEY);
@@ -212,7 +211,7 @@ export async function digestHex(input: string): Promise<{ hex: string; weak: boo
 /**
  * Collects the browser's device signals. Never throws; on failure returns a
  * best-effort object (fingerprint 'fp_error' when even that is impossible).
- * @deprecated Use `deviceRisk.identify()`: Touchque matches the visitor on its side.
+ * @deprecated Use Touchque Device Risk (`@touchque/device-risk`): Touchque matches the visitor on its side.
  */
 export async function collectDeviceSignals(): Promise<DeviceSignals> {
   try {

@@ -51,23 +51,10 @@ export { defineTouchqueApproval, APPROVAL_ICONS } from './approvalElement';
 export type { TouchqueApprovalElement } from './approvalElement';
 export { APPROVAL_STYLES } from './approvalStyles';
 export { isPasskeyAutofillAvailable } from './passkeys';
-export { deviceRisk, createDeviceRisk, DEVICE_RISK_FIELD, DEVICE_RISK_HEADER, DEVICE_RISK_PURPOSES } from './deviceRisk';
 export { setTouchqueLogger } from './log';
 export type { TouchqueWebLogger } from './log';
-export { installDeviceRiskTag, REQUEST_ID_FIELD, FORM_PURPOSE_ATTRIBUTE, DEVICE_EVENT } from './deviceRiskTag';
-export type { DeviceRiskTagOptions, TouchqueDevice } from './deviceRiskTag';
-export type {
-  DeviceRisk, DeviceRiskPurpose, DeviceRiskReport, DeviceRiskBody, DeviceRiskTraits, DeviceRiskFindings, DeviceRiskCollectOptions,
-  DeviceRiskIdentifyOptions, DeviceRiskIdentification,
-} from './deviceRisk';
-export { deviceSealMessage } from './browserKey';
-export type { DeviceSeal } from './browserKey';
 export { startClientSignals, addAgentTrap, agentTrapState, AGENT_TRAP_ATTRIBUTE, AGENT_TRAP_WORD } from './clientSignals';
 export type { ClientSignals, ClientSignalsProbe } from './clientSignals';
-export { startPointerSummary, encodePointerSummary } from './pointerSummary';
-export type { PointerSummary, PointerSummaryProbe } from './pointerSummary';
-export { startInputSummary, encodeInputSummary } from './inputSummary';
-export type { InputSummary, InputSummaryProbe } from './inputSummary';
 export type { PasskeyAutofillOptions } from './passkeys';
 export { shouldOfferPasskey, dismissPasskeyOffer, rememberPasskey, forgetPasskeyOffer } from './upgrade';
 export type { PasskeyOfferOptions } from './upgrade';

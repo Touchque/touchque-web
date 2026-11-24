@@ -3,6 +3,22 @@
 All notable changes to this project will be documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.0] — 2026-11-24
+
+### Removed (breaking: ships as 3.0.0)
+- **Device risk moved to its own SDK, `@touchque/device-risk`** (Touchque Device Risk is a separate product). Gone from this package: `deviceRisk`, `createDeviceRisk`, `installDeviceRiskTag`, the script tag build (`touchque-device.global.js`, `device-sri.json`), `startInputSummary`/`encodeInputSummary`, `startPointerSummary`/`encodePointerSummary` exports, `deviceSealMessage`, `BrowserKey.sealDevice` and the Device risk types. The tag on `cdn.touchque.com/device` is now built from `@touchque/device-risk` (from v3.0.0; v2.x stay as they are).
+- `attachBehavioral`'s `collectDeviceFingerprint` and `createAction`'s `telemetry.collectDeviceFingerprint` are replaced by `deviceRiskReport`: a function that gives the Device Risk report (`() => deviceRisk.collect({ purpose: 'sign_in' })` with `@touchque/device-risk`); the telemetry carries it when given.
+- The Unreleased Device risk entries below (consistency checks, the first-party cookie) ship in `@touchque/device-risk` 3.0.0 instead.
+
+### Added
+- **Traits that cannot all be true** (after 2.3.0: ships with the next tag version). `consistencyFindings` adds to `s.tamper` what anti-detect browsers, Android emulators, desktop tools posing as an iPhone or an Android phone, and user-agent changers get wrong even when they patch the browser natively:
+  - `ua_engine_mismatch`: the JavaScript engine (`jsEngine`, by the wording of one TypeError) is not the claimed browser's. Every iOS browser and Safari run WebKit's engine, Chromium browsers V8, Firefox Gecko.
+  - `gpu_os_mismatch`: graphics only another platform has, such as a desktop card on an "Android phone" or anything but Apple's GPU on an "iPhone". Adreno is allowed on Windows (Snapdragon laptops).
+  - `fonts_os_mismatch`: Segoe UI on a Mac, iPhone or Android; Apple Color Emoji with Menlo on Windows or Android.
+  - `mobile_desktop_mismatch`: a phone with no touch or with a mouse only; an "iPhone" with a screen longer than 1000 points or under 2x.
+  - In `s.vm`: `emulator`, when the WebGL renderer names an Android emulator (Android Studio, Genymotion, BlueStacks, Nox, LDPlayer, MuMu).
+- **The first-party cookie** (after 2.3.0, with the authenticator that sets it). `deviceRisk.identify` sends its call with `credentials: 'same-origin'` (was `omit`). Through the brand's own `/_tq/` path, Touchque's HttpOnly `_tqd` cookie (Path=/_tq, 400 days) goes there and back. Set by the site's own server, Safari keeps it past its 7-day limit on script-written storage, so an iPhone whose stored id and key Safari wiped keeps its visitor. To `api.touchque.com` nothing changes: no cookie is sent.
+
 ## [2.3.0] — 2026-11-24
 
 ### Added

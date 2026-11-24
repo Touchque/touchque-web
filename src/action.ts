@@ -141,8 +141,8 @@ export interface TouchqueFetchOptions {
     apiBaseUrl: string;
     /** Element whose pointer/keyboard activity is measured (default: document.body). */
     container?: string | Element;
-    /** Also send device recognition signals; disclose it in your privacy notice. */
-    collectDeviceFingerprint?: boolean;
+    /** With Touchque Device Risk on the page (`@touchque/device-risk`): a function that gives its report; disclose it in your privacy notice. */
+    deviceRiskReport?: () => Promise<string | null>;
   };
 }
 
@@ -265,7 +265,7 @@ export async function touchqueFetch(input: RequestInfo | URL, init: RequestInit 
         try {
           tracker = attachBehavioral(options.telemetry.container ?? document.body, {
             telemetryToken: step.telemetryToken, requestId: step.requestId, apiBaseUrl: options.telemetry.apiBaseUrl,
-            collectDeviceFingerprint: options.telemetry.collectDeviceFingerprint, fetch: options.fetch,
+            deviceRiskReport: options.telemetry.deviceRiskReport, fetch: options.fetch,
           });
         } catch (err) {
           logWarn(`[Touchque] behavioural telemetry not started: ${errorText(err)}`);
