@@ -3,6 +3,15 @@
 All notable changes to this project will be documented in this file. The
 format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.3.0] — 2026-11-24
+
+### Added
+- **What kind of bot.** The Device risk report names the automation tool whose marks are on the page, in `s.auto` (`automationFindings`): `selenium`, `playwright`, `phantomjs`, `nightmare`, `headless_chrome`, and `cdp` when the DevTools protocol is attached (a driver, or developer tools open: a hint only).
+- **The input summary** (`startInputSummary`, `encodeInputSummary`): how the page was typed into and clicked, as counts and milliseconds only (never a key, a character or a field): key presses, text that arrived with no key press (Playwright `fill`, CDP `insertText`, an AI agent's typing; dictation too), pastes, how even the time between keys was, how long keys were held, mouse presses on the exact middle of the element (what `click()` in Playwright and Puppeteer aims at), and the pauses between actions (an agent thinks before each step). The script tag sends it after the pointer summary and a second dot: `dre_…`.`<18>`.`<17>`, 63 characters, inside the 64 every server SDK passes on. `data-pointer="off"` leaves both summaries out.
+
+### Changed
+- `DEVICE_TAG_VERSION` is `2.3.0` (2.0.0 to 2.2.0 shipped the same tag bytes as 2.0.0).
+
 ## [2.2.0] — 2026-11-13
 
 ### Changed

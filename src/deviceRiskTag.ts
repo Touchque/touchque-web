@@ -21,8 +21,13 @@
 // counts (pointerSummary.ts: presses on a pointer that jumped there, how long
 // presses and taps lasted, how straight long strokes were), never a position
 // or a path. Your server passes the field as it is; Touchque's risk engine
-// weighs it (device_pointer_synthetic, only ever a step-up). `data-pointer="off"`
-// on the tag leaves it out.
+// weighs it (device_pointer_synthetic, only ever a step-up). Since 2.3.0 a
+// second dot follows with 17 characters of how the page was typed into and
+// clicked (inputSummary.ts: key presses, text with no key press, how even
+// the typing was, presses on the exact middle of a button, pauses between
+// actions), never a key or a character (device_input_synthetic, a step-up at
+// most; the dashboard names the kind of bot). `data-pointer="off"` on the
+// tag leaves both out.
 //
 // Single-page apps read `window.TouchqueDevice`: `ready` (the first
 // identification, or null), `value()` (what to send now: the requestId and
@@ -41,6 +46,8 @@ import type { DeviceRisk, DeviceRiskIdentification, DeviceRiskPurpose } from './
 import { logWarn, errorText, setTouchqueLogger } from './log';
 import { startPointerSummary } from './pointerSummary';
 import type { PointerSummaryProbe } from './pointerSummary';
+import { startInputSummary } from './inputSummary';
+import type { InputSummaryProbe } from './inputSummary';
 
 /** The hidden form field the tag fills; your server passes it to deviceRisk.check. */
 export const REQUEST_ID_FIELD = 'touchque_request_id';
@@ -52,7 +59,7 @@ export const DEVICE_EVENT = 'touchque:device';
 export const REFRESH_AFTER_MS = 10 * 60 * 1000;
 /** After a submit, a new identification for the next attempt (a single-page app). */
 export const AFTER_SUBMIT_MS = 1000;
-export const DEVICE_TAG_VERSION = '2.0.0';
+export const DEVICE_TAG_VERSION = '2.3.0';
 
 export interface DeviceRiskTagOptions {
   /** Your workspace's public site key (`tqpk_…`, dashboard → Device risk → Settings). */
@@ -61,7 +68,7 @@ export interface DeviceRiskTagOptions {
   purpose?: DeviceRiskPurpose;
   /** Touchque's API, default `https://api.touchque.com`. */
   apiBaseUrl?: string;
-  /** Send how the pointer and the fingers moved (counts only). Default true. */
+  /** Send how the pointer and the fingers moved, and how the page was typed into (counts only). Default true. */
   pointer?: boolean;
 }
 
@@ -72,7 +79,7 @@ export interface TouchqueDevice {
   readonly requestId: string | null;
   /** The current visitorId for the page's purpose. Never trust it on the page. */
   readonly visitorId: string | null;
-  /** What to send to your server now (the form field's value): the requestId, a dot and the pointer summary; null until ready. */
+  /** What to send to your server now (the form field's value): the requestId, then the pointer and input summaries after dots; null until ready. */
   value(purpose?: DeviceRiskPurpose): string | null;
   /** A new identification now (for the page's purpose, or the one given), and the forms updated. */
   refresh(purpose?: DeviceRiskPurpose): Promise<DeviceRiskIdentification | null>;
@@ -96,6 +103,7 @@ export interface DeviceRiskTagDeps {
   deviceRisk?: Pick<DeviceRisk, 'identify'>;
   now?: () => number;
   pointer?: PointerSummaryProbe | null;
+  input?: InputSummaryProbe | null;
 }
 
 const isPurpose = (v: unknown): v is DeviceRiskPurpose => DEVICE_RISK_PURPOSES.includes(v as DeviceRiskPurpose);
@@ -114,10 +122,18 @@ export function installDeviceRiskTag(options: DeviceRiskTagOptions, deps: Device
   try {
     pointer = deps.pointer !== undefined ? deps.pointer : options.pointer === false ? null : startPointerSummary(doc);
   } catch { /* no pointer summary: the requestId alone */ }
+  // The input summary rides after the pointer summary only: without one, none.
+  let input: InputSummaryProbe | null = null;
+  try {
+    input = !pointer ? null : deps.input !== undefined ? deps.input : startInputSummary(doc);
+  } catch { /* no input summary */ }
   const valueOf = (purpose: DeviceRiskPurpose): string | null => {
     const id = slots.get(purpose)?.current?.requestId;
     if (!id) return null;
-    try { return pointer ? `${id}.${pointer.encode()}` : id; } catch { return id; }
+    let out = id;
+    try { if (pointer) out = `${id}.${pointer.encode()}`; } catch { return id; }
+    try { if (pointer && input) out = `${out}.${input.encode()}`; } catch { /* the pointer summary alone */ }
+    return out;
   };
 
   const slot = (purpose: DeviceRiskPurpose): Slot => {
@@ -245,6 +261,7 @@ export function installDeviceRiskTag(options: DeviceRiskTagOptions, deps: Device
       doc.removeEventListener('focusin', freshen);
       for (const s of slots.values()) if (s.timer) clearTimeout(s.timer);
       pointer?.stop();
+      input?.stop();
     },
     version: DEVICE_TAG_VERSION,
   };

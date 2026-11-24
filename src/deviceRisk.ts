@@ -96,6 +96,8 @@ export interface DeviceRiskFindings {
   tamper: string[];
   /** A virtual machine, software graphics, a headless or automated browser. */
   vm: string[];
+  /** Which automation tool left its marks on the page (selenium, playwright, phantomjs, nightmare, headless_chrome), and cdp: the DevTools protocol is attached (a driver, or developer tools open). Since 2.3.0. */
+  auto: string[];
   /** How a private window showed itself (chromium_quota, firefox_no_sw, safari_opfs), or null. */
   priv: string | null;
   /** Brave (randomises some traits on purpose: not suspicious, but the server trusts those traits less). */
@@ -417,6 +419,45 @@ export function vmFindings(win: Window, gpu: string | null): string[] {
   return [...out].sort();
 }
 
+/**
+ * The marks automation tools leave on a page: Selenium's ChromeDriver
+ * variables and its helper functions, Playwright's bindings and init scripts,
+ * PhantomJS, Nightmare, Chrome's headless user agent. `cdp`: the DevTools
+ * protocol is attached (a console message read its error), which drivers do,
+ * and so does a person with developer tools open: a hint, never proof.
+ * Names only, sorted.
+ */
+export function automationFindings(win: Window): string[] {
+  const out = new Set<string>();
+  const w = win as unknown as Record<string, unknown>;
+  const doc = win.document as unknown as Record<string, unknown>;
+  const has = (o: Record<string, unknown>, k: string) => { try { return k in o; } catch { return false; } };
+  try {
+    for (const k of Object.getOwnPropertyNames(win)) if (/^cdc_[A-Za-z0-9]{10,}/.test(k) || /^\$?wdc_/.test(k)) out.add('selenium');
+    for (const k of Object.keys(win.document)) if (/^\$?cdc_|^\$wdc_/.test(k)) out.add('selenium');
+  } catch { /* ignore */ }
+  for (const k of ['__selenium_unwrapped', '__selenium_evaluate', '__webdriver_evaluate', '__driver_evaluate', '__webdriver_unwrapped',
+    '__driver_unwrapped', '__fxdriver_evaluate', '__fxdriver_unwrapped', '__webdriver_script_fn', '__webdriver_script_func',
+    '_Selenium_IDE_Recorder', 'callSelenium', '_selenium', '__webdriverFunc']) {
+    if (has(w, k) || has(doc, k)) out.add('selenium');
+  }
+  try { if (win.document.documentElement?.getAttribute('webdriver') !== null) out.add('selenium'); } catch { /* ignore */ }
+  for (const k of ['__playwright__binding__', '__pwInitScripts', '__playwright_evaluation_script__', '__playwright']) if (has(w, k)) out.add('playwright');
+  for (const k of ['callPhantom', '_phantom']) if (has(w, k)) out.add('phantomjs');
+  if (has(w, '__nightmare')) out.add('nightmare');
+  try { if (/HeadlessChrome/.test(win.navigator.userAgent || '')) out.add('headless_chrome'); } catch { /* ignore */ }
+  try {
+    // With the DevTools protocol's Runtime domain on, logging an error reads its stack.
+    let read = false;
+    const probe = new Error('');
+    Object.defineProperty(probe, 'stack', { configurable: true, get() { read = true; return ''; } });
+    // eslint-disable-next-line no-console
+    (win as Window & { console?: Console }).console?.debug?.(probe);
+    if (read) out.add('cdp');
+  } catch { /* ignore */ }
+  return [...out].sort();
+}
+
 /** How a private window showed itself, where the browser lets that be seen (heuristic; null when not seen). */
 export async function privateWindow(win: Window): Promise<string | null> {
   const nav = win.navigator as Navigator & { brave?: unknown; storage?: StorageManager & { getDirectory?: () => Promise<unknown> } };
@@ -482,6 +523,7 @@ export async function buildDeviceRiskReport(options: DeviceRiskCollectOptions, w
     s: {
       tamper: tamperFindings(win),
       vm: vmFindings(win, gpuRaw),
+      auto: automationFindings(win),
       priv,
       brave: typeof nav.brave === 'object' && nav.brave !== null,
       cvNoise,

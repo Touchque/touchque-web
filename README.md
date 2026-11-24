@@ -272,7 +272,7 @@ anything about it asks for more.
 ### One line on the page, one on your server
 
 ```html
-<script src="https://cdn.touchque.com/device/v2.0.0/script.js" data-site-key="tqpk_…" data-purpose="sign_in"
+<script src="https://cdn.touchque.com/device/v2.3.0/script.js" data-site-key="tqpk_…" data-purpose="sign_in"
         integrity="sha384-…" crossorigin="anonymous" async></script>
 ```
 

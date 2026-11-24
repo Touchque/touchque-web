@@ -2,7 +2,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createHash, verify, webcrypto } from 'node:crypto';
 import { createBrowserKey, deviceSealMessage, type BrowserKeyStore } from './browserKey';
 import {
-  buildDeviceRiskReport, createDeviceRisk, osFamily, browserFamily, tamperFindings, vmFindings,
+  buildDeviceRiskReport, createDeviceRisk, osFamily, browserFamily, tamperFindings, vmFindings, automationFindings,
   type DeviceRiskBody, type DeviceRiskReport,
 } from './deviceRisk';
 
@@ -184,5 +184,29 @@ describe('deviceRisk.identify', () => {
     const down = vi.fn(async () => { throw new TypeError('Failed to fetch'); });
     expect(await createDeviceRisk().identify({ siteKey: SITE_KEY, purpose: 'sign_in', browserKey: null, fetch: down as unknown as typeof fetch })).toBeNull();
     await expect(createDeviceRisk().identify({ siteKey: 'pk_live', purpose: 'sign_in' })).rejects.toThrow(/siteKey/);
+  });
+});
+
+describe('automation tools on the page (2.3.0)', () => {
+  const clean = () => {
+    for (const k of ['cdc_adoQpoasnfa76pfcZLmcfl_Array', '__playwright__binding__', 'callPhantom', '__nightmare']) delete (window as unknown as Record<string, unknown>)[k];
+    document.documentElement.removeAttribute('webdriver');
+  };
+  afterEach(clean);
+
+  test('names the tool whose marks are there, and nothing on a plain page', () => {
+    expect(automationFindings(window).filter((c) => c !== 'cdp')).toEqual([]);
+    const w = window as unknown as Record<string, unknown>;
+    w.cdc_adoQpoasnfa76pfcZLmcfl_Array = [];
+    w.__playwright__binding__ = () => {};
+    w.callPhantom = () => {};
+    w.__nightmare = {};
+    expect(automationFindings(window).filter((c) => c !== 'cdp')).toEqual(['nightmare', 'phantomjs', 'playwright', 'selenium']);
+  });
+
+  test('the report carries them in s.auto', async () => {
+    (window as unknown as Record<string, unknown>).__playwright__binding__ = () => {};
+    const r = await buildDeviceRiskReport({ purpose: 'sign_in', browserKey: null });
+    expect(JSON.parse(r.body).s.auto).toContain('playwright');
   });
 });

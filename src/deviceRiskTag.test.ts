@@ -91,8 +91,8 @@ describe('the Device risk script tag', () => {
     expect(field(form)?.value).toBe('dre_sign_in_2');
 
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
-    // The submitted form carries its requestId and how the pointer moved.
-    expect(field(form)?.value).toMatch(/^dre_sign_in_2\.1[A-Za-z0-9_-]{17}$/);
+    // The submitted form carries its requestId, how the pointer moved and how the page was typed into.
+    expect(field(form)?.value).toMatch(/^dre_sign_in_2\.1[A-Za-z0-9_-]{17}\.1[A-Za-z0-9_-]{16}$/);
     expect(device.value()).toBe(field(form)?.value);
     await vi.advanceTimersByTimeAsync(AFTER_SUBMIT_MS);
     expect(field(form)?.value).toBe('dre_sign_in_3');
@@ -110,7 +110,7 @@ describe('the Device risk script tag', () => {
   test('the pointer summary: on submit after the requestId, left out with pointer: false', async () => {
     document.body.innerHTML = '<form><button>Go</button></form>';
     const pointer = { summary: vi.fn(), encode: () => '1CCABA__A__A__ACAA', stop: vi.fn() };
-    device = installDeviceRiskTag({ siteKey: SITE_KEY }, { deviceRisk: fakeRisk(), pointer });
+    device = installDeviceRiskTag({ siteKey: SITE_KEY }, { deviceRisk: fakeRisk(), pointer, input: null });
     await device.ready;
     const form = document.querySelector('form')!;
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
@@ -125,6 +125,26 @@ describe('the Device risk script tag', () => {
     await device.ready;
     document.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     expect(field(document.querySelector('form')!)?.value).toBe('dre_sign_in_1');
+    expect(device.value()).toBe('dre_sign_in_1');
+  });
+
+  test('the input summary: after the pointer summary and a second dot, inside 64 characters; never without the pointer summary', async () => {
+    document.body.innerHTML = '<form><button>Go</button></form>';
+    const pointer = { summary: vi.fn(), encode: () => '1CCABA__A__A__ACAA', stop: vi.fn() };
+    const input = { summary: vi.fn(), encode: () => '1AAAAA__A__A__AAA', stop: vi.fn() };
+    device = installDeviceRiskTag({ siteKey: SITE_KEY }, { deviceRisk: fakeRisk(), pointer, input });
+    await device.ready;
+    const form = document.querySelector('form')!;
+    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    // A real requestId is 26 characters: 26 + 1 + 18 + 1 + 17 = 63.
+    expect(field(form)?.value).toBe('dre_sign_in_1.1CCABA__A__A__ACAA.1AAAAA__A__A__AAA');
+    expect(`dre_${'x'.repeat(22)}.1CCABA__A__A__ACAA.1AAAAA__A__A__AAA`.length).toBeLessThanOrEqual(64);
+    device.stop();
+    expect(input.stop).toHaveBeenCalled();
+
+    document.body.innerHTML = '<form></form>';
+    device = installDeviceRiskTag({ siteKey: SITE_KEY }, { deviceRisk: fakeRisk(), pointer: null, input });
+    await device.ready;
     expect(device.value()).toBe('dre_sign_in_1');
   });
 

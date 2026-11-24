@@ -66,6 +66,8 @@ export { startClientSignals, addAgentTrap, agentTrapState, AGENT_TRAP_ATTRIBUTE,
 export type { ClientSignals, ClientSignalsProbe } from './clientSignals';
 export { startPointerSummary, encodePointerSummary } from './pointerSummary';
 export type { PointerSummary, PointerSummaryProbe } from './pointerSummary';
+export { startInputSummary, encodeInputSummary } from './inputSummary';
+export type { InputSummary, InputSummaryProbe } from './inputSummary';
 export type { PasskeyAutofillOptions } from './passkeys';
 export { shouldOfferPasskey, dismissPasskeyOffer, rememberPasskey, forgetPasskeyOffer } from './upgrade';
 export type { PasskeyOfferOptions } from './upgrade';
